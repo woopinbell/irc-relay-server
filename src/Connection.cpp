@@ -1,10 +1,24 @@
 #include "Connection.hpp"
 
+#include <sys/socket.h>
 #include <unistd.h>
 
+#include <cerrno>
+#include <cstring>
 #include <utility>
 
 namespace irc {
+namespace {
+
+std::string errorMessage(const char* operation)
+{
+    std::string message(operation);
+    message += ": ";
+    message += std::strerror(errno);
+    return message;
+}
+
+} // namespace
 
 Connection::Connection(int fd, std::string peerAddress, std::size_t maxLineLength)
     : fd_(fd)
@@ -74,6 +88,44 @@ bool Connection::wantsWrite() const noexcept
 std::size_t Connection::pendingBytes() const noexcept
 {
     return writeBuffer_.size() - writeOffset_;
+}
+
+Connection::ReadResult Connection::readAvailable()
+{
+    ReadResult result;
+    char buffer[4096];
+
+    while (true) {
+        const ssize_t count = ::recv(fd_, buffer, sizeof(buffer), 0);
+        if (count > 0) {
+            readBuffer_.append(buffer, static_cast<std::size_t>(count));
+            if (!extractLines(result)) {
+                break;
+            }
+            continue;
+        }
+        if (count == 0) {
+            peerClosed_ = true;
+            result.peerClosed = true;
+            requestClose("peer closed connection");
+            break;
+        }
+
+        if (errno == EINTR) {
+            continue;
+        }
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            result.wouldBlock = true;
+            break;
+        }
+
+        result.hasError = true;
+        result.error = errorMessage("recv");
+        requestClose(result.error);
+        break;
+    }
+
+    return result;
 }
 
 void Connection::closeFd() noexcept
