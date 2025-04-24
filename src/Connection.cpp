@@ -18,6 +18,15 @@ std::string errorMessage(const char* operation)
     return message;
 }
 
+int sendFlags()
+{
+#ifdef MSG_NOSIGNAL
+    return MSG_NOSIGNAL;
+#else
+    return 0;
+#endif
+}
+
 } // namespace
 
 Connection::Connection(int fd, std::string peerAddress, std::size_t maxLineLength)
@@ -126,6 +135,88 @@ Connection::ReadResult Connection::readAvailable()
     }
 
     return result;
+}
+
+Connection::WriteResult Connection::flushPending()
+{
+    WriteResult result;
+
+    while (wantsWrite()) {
+        const char* data = writeBuffer_.data() + writeOffset_;
+        const std::size_t size = writeBuffer_.size() - writeOffset_;
+        const ssize_t count = ::send(fd_, data, size, sendFlags());
+
+        if (count > 0) {
+            writeOffset_ += static_cast<std::size_t>(count);
+            continue;
+        }
+        if (count == 0) {
+            result.wouldBlock = true;
+            break;
+        }
+        if (errno == EINTR) {
+            continue;
+        }
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            result.wouldBlock = true;
+            break;
+        }
+
+        result.hasError = true;
+        result.error = errorMessage("send");
+        requestClose(result.error);
+        break;
+    }
+
+    if (!wantsWrite()) {
+        writeBuffer_.clear();
+        writeOffset_ = 0;
+        result.finished = true;
+    } else {
+        result.finished = false;
+        if (writeOffset_ > 16384) {
+            writeBuffer_.erase(0, writeOffset_);
+            writeOffset_ = 0;
+        }
+    }
+
+    return result;
+}
+
+void Connection::queueRaw(const std::string& bytes)
+{
+    writeBuffer_.append(bytes);
+}
+
+void Connection::queueLine(const std::string& line)
+{
+    std::size_t end = line.size();
+    while (end > 0 && (line[end - 1] == '\r' || line[end - 1] == '\n')) {
+        --end;
+    }
+    writeBuffer_.append(line, 0, end);
+    writeBuffer_.append("\r\n");
+}
+
+void Connection::requestClose(std::string reason)
+{
+    closeRequested_ = true;
+    closeReason_ = std::move(reason);
+}
+
+bool Connection::closeRequested() const noexcept
+{
+    return closeRequested_;
+}
+
+const std::string& Connection::closeReason() const noexcept
+{
+    return closeReason_;
+}
+
+bool Connection::peerClosed() const noexcept
+{
+    return peerClosed_;
 }
 
 void Connection::closeFd() noexcept
