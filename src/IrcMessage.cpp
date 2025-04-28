@@ -45,6 +45,74 @@ std::string IrcMessage::toLine() const {
     return out.str();
 }
 
+bool IrcMessage::parseLine(const std::string& line, IrcMessage& out, std::string* error) {
+    const std::string trimmed = trimFrame(line);
+    out = IrcMessage();
+    out.raw = trimmed;
+
+    if (trimmed.empty()) {
+        if (error) {
+            *error = "empty IRC frame";
+        }
+        return false;
+    }
+    if (trimmed.size() > 510) {
+        if (error) {
+            *error = "IRC frame exceeds 510 octets before CRLF";
+        }
+        return false;
+    }
+
+    std::size_t pos = 0;
+    if (trimmed[pos] == ':') {
+        const std::size_t end = trimmed.find(' ');
+        if (end == std::string::npos || end == 1) {
+            if (error) {
+                *error = "message prefix is missing a command";
+            }
+            return false;
+        }
+        out.prefix = trimmed.substr(1, end - 1);
+        pos = end + 1;
+    }
+
+    while (pos < trimmed.size() && trimmed[pos] == ' ') {
+        ++pos;
+    }
+
+    const std::size_t commandStart = pos;
+    while (pos < trimmed.size() && trimmed[pos] != ' ') {
+        ++pos;
+    }
+    if (commandStart == pos) {
+        if (error) {
+            *error = "IRC command is missing";
+        }
+        return false;
+    }
+    out.command = upper(trimmed.substr(commandStart, pos - commandStart));
+
+    while (pos < trimmed.size()) {
+        while (pos < trimmed.size() && trimmed[pos] == ' ') {
+            ++pos;
+        }
+        if (pos >= trimmed.size()) {
+            break;
+        }
+        if (trimmed[pos] == ':') {
+            out.params.push_back(trimmed.substr(pos + 1));
+            break;
+        }
+        const std::size_t paramStart = pos;
+        while (pos < trimmed.size() && trimmed[pos] != ' ') {
+            ++pos;
+        }
+        out.params.push_back(trimmed.substr(paramStart, pos - paramStart));
+    }
+
+    return true;
+}
+
 std::string IrcMessage::upper(const std::string& value) {
     std::string copy = value;
     std::transform(copy.begin(), copy.end(), copy.begin(), [](unsigned char ch) {
