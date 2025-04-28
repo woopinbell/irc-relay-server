@@ -113,10 +113,46 @@ bool IrcMessage::parseLine(const std::string& line, IrcMessage& out, std::string
     return true;
 }
 
+std::vector<IrcMessage> IrcMessage::consumeBuffer(std::string& buffer, std::string* error) {
+    std::vector<IrcMessage> messages;
+    std::size_t newline = buffer.find('\n');
+    while (newline != std::string::npos) {
+        const std::string frame = buffer.substr(0, newline + 1);
+        buffer.erase(0, newline + 1);
+
+        IrcMessage message;
+        std::string localError;
+        if (parseLine(frame, message, &localError)) {
+            messages.push_back(message);
+        } else if (error) {
+            *error = localError;
+        }
+
+        newline = buffer.find('\n');
+    }
+
+    if (buffer.size() > 4096) {
+        if (error) {
+            *error = "discarded oversized partial IRC frame";
+        }
+        buffer.clear();
+    }
+
+    return messages;
+}
+
 std::string IrcMessage::upper(const std::string& value) {
     std::string copy = value;
     std::transform(copy.begin(), copy.end(), copy.begin(), [](unsigned char ch) {
         return static_cast<char>(std::toupper(ch));
     });
     return copy;
+}
+
+std::string IrcMessage::trimFrame(const std::string& line) {
+    std::string trimmed = line;
+    while (!trimmed.empty() && (trimmed[trimmed.size() - 1] == '\n' || trimmed[trimmed.size() - 1] == '\r')) {
+        trimmed.erase(trimmed.size() - 1);
+    }
+    return trimmed;
 }
