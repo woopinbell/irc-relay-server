@@ -48,6 +48,27 @@ void setNoSigPipe(int fd)
 #endif
 }
 
+std::string formatPeerAddress(const sockaddr_storage& storage)
+{
+    char address[INET6_ADDRSTRLEN];
+
+    if (storage.ss_family == AF_INET) {
+        const sockaddr_in* ipv4 = reinterpret_cast<const sockaddr_in*>(&storage);
+        if (::inet_ntop(AF_INET, &ipv4->sin_addr, address, sizeof(address)) == NULL) {
+            return "unknown";
+        }
+        return std::string(address) + ":" + std::to_string(ntohs(ipv4->sin_port));
+    }
+    if (storage.ss_family == AF_INET6) {
+        const sockaddr_in6* ipv6 = reinterpret_cast<const sockaddr_in6*>(&storage);
+        if (::inet_ntop(AF_INET6, &ipv6->sin6_addr, address, sizeof(address)) == NULL) {
+            return "unknown";
+        }
+        return std::string("[") + address + "]:" + std::to_string(ntohs(ipv6->sin6_port));
+    }
+    return "unknown";
+}
+
 } // namespace
 
 Server::Server(Config config)
@@ -165,6 +186,62 @@ void Server::createListenSocket()
     }
 
     listenFd_ = fd;
+}
+
+void Server::acceptReadyClients()
+{
+    while (true) {
+        sockaddr_storage peerStorage;
+        std::memset(&peerStorage, 0, sizeof(peerStorage));
+        socklen_t peerLength = sizeof(peerStorage);
+        int clientFd =
+            ::accept(listenFd_, reinterpret_cast<sockaddr*>(&peerStorage), &peerLength);
+
+        if (clientFd == -1) {
+            if (errno == EINTR) {
+                continue;
+            }
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                return;
+            }
+            reportError(std::string("accept: ") + std::strerror(errno));
+            return;
+        }
+
+        try {
+            setCloseOnExec(clientFd);
+            setNonBlocking(clientFd);
+            setNoSigPipe(clientFd);
+
+            std::unique_ptr<Connection> connection(new Connection(
+                clientFd,
+                formatPeerAddress(peerStorage),
+                config_.maxLineLength));
+            clientFd = -1;
+
+            const int fd = connection->fd();
+            eventManager_->addFd(fd, EventInterest::Read);
+            Connection* connectionPtr = connection.get();
+            connections_[fd] = std::move(connection);
+
+            if (onConnect_) {
+                try {
+                    onConnect_(*connectionPtr);
+                } catch (const std::exception& exception) {
+                    reportError(exception.what());
+                    connectionPtr->requestClose("connect handler error");
+                }
+            }
+            if (connections_.find(fd) != connections_.end()) {
+                refreshInterest(*connectionPtr);
+            }
+        } catch (const std::exception& exception) {
+            if (clientFd != -1) {
+                ::close(clientFd);
+            }
+            reportError(exception.what());
+        }
+    }
 }
 
 } // namespace irc
