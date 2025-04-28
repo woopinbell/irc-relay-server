@@ -224,6 +224,52 @@ bool Server::queueRawTo(int fd, const std::string& bytes)
     return true;
 }
 
+void Server::disconnect(int fd, const std::string& reason)
+{
+    std::unordered_map<int, std::unique_ptr<Connection> >::iterator found = connections_.find(fd);
+    if (found == connections_.end()) {
+        return;
+    }
+
+    if (eventManager_) {
+        try {
+            eventManager_->removeFd(fd);
+        } catch (const std::exception& exception) {
+            reportError(exception.what());
+        }
+    }
+
+    std::unique_ptr<Connection> connection = std::move(found->second);
+    connections_.erase(found);
+
+    if (onDisconnect_) {
+        try {
+            onDisconnect_(*connection, reason);
+        } catch (const std::exception& exception) {
+            reportError(exception.what());
+        }
+    }
+}
+
+Connection* Server::findConnection(int fd)
+{
+    std::unordered_map<int, std::unique_ptr<Connection> >::iterator found = connections_.find(fd);
+    if (found == connections_.end()) {
+        return NULL;
+    }
+    return found->second.get();
+}
+
+const Connection* Server::findConnection(int fd) const
+{
+    std::unordered_map<int, std::unique_ptr<Connection> >::const_iterator found =
+        connections_.find(fd);
+    if (found == connections_.end()) {
+        return NULL;
+    }
+    return found->second.get();
+}
+
 void Server::createListenSocket()
 {
     int fd = ::socket(AF_INET, SOCK_STREAM, 0);
@@ -385,9 +431,14 @@ void Server::handleClientEvent(const Event& event)
     if (hasInterest(event.interests, EventInterest::Write) && connection->wantsWrite()) {
         Connection::WriteResult writeResult = connection->flushPending();
         if (writeResult.hasError) {
-            disconnect(connection->fd(), writeResult.error);
+            disconnect(fd, writeResult.error);
             return;
         }
+    }
+
+    if (event.hangup && !connection->wantsWrite()) {
+        disconnect(fd, "peer hangup");
+        return;
     }
 
     refreshInterest(*connection);
@@ -395,17 +446,55 @@ void Server::handleClientEvent(const Event& event)
 
 void Server::refreshInterest(Connection& connection)
 {
+    const int fd = connection.fd();
+
     if (connection.closeRequested() && !connection.wantsWrite()) {
-        disconnect(connection.fd(), connection.closeReason());
+        disconnect(fd, connection.closeReason());
         return;
     }
 
-    EventInterest interests =
-        connection.closeRequested() ? EventInterest::Write : EventInterest::Read;
+    EventInterest interests = connection.closeRequested() ? EventInterest::Write : EventInterest::Read;
     if (connection.wantsWrite()) {
         interests |= EventInterest::Write;
     }
-    eventManager_->updateFd(connection.fd(), interests);
+    eventManager_->updateFd(fd, interests);
+}
+
+void Server::closeListenSocket() noexcept
+{
+    if (listenFd_ != -1) {
+        if (eventManager_) {
+            try {
+                eventManager_->removeFd(listenFd_);
+            } catch (...) {
+            }
+        }
+        ::close(listenFd_);
+        listenFd_ = -1;
+    }
+}
+
+void Server::closeAllConnections()
+{
+    std::vector<int> fds;
+    fds.reserve(connections_.size());
+    for (std::unordered_map<int, std::unique_ptr<Connection> >::const_iterator it =
+             connections_.begin();
+         it != connections_.end();
+         ++it) {
+        fds.push_back(it->first);
+    }
+
+    for (std::vector<int>::const_iterator it = fds.begin(); it != fds.end(); ++it) {
+        disconnect(*it, "server stopped");
+    }
+}
+
+void Server::reportError(const std::string& message) const
+{
+    if (onError_) {
+        onError_(message);
+    }
 }
 
 } // namespace irc
