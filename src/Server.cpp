@@ -8,8 +8,10 @@
 
 #include <cerrno>
 #include <cstring>
+#include <stdexcept>
 #include <system_error>
 #include <utility>
+#include <vector>
 
 namespace irc {
 namespace {
@@ -69,6 +71,14 @@ std::string formatPeerAddress(const sockaddr_storage& storage)
     return "unknown";
 }
 
+std::string eventErrorMessage(const Event& event)
+{
+    if (event.errorCode == 0) {
+        return "socket readiness error";
+    }
+    return std::string("socket readiness error: ") + std::strerror(event.errorCode);
+}
+
 } // namespace
 
 Server::Server(Config config)
@@ -84,6 +94,61 @@ Server::~Server()
     stop();
     closeAllConnections();
     closeListenSocket();
+}
+
+void Server::start()
+{
+    if (running_) {
+        return;
+    }
+
+    eventManager_ = EventManager::createDefault();
+    createListenSocket();
+    eventManager_->addFd(listenFd_, EventInterest::Read);
+    stopRequested_ = false;
+    running_ = true;
+}
+
+void Server::run()
+{
+    if (!running_) {
+        start();
+    }
+
+    while (running_ && !stopRequested_) {
+        pollOnce(config_.eventTimeoutMs);
+    }
+
+    running_ = false;
+    closeAllConnections();
+    closeListenSocket();
+    eventManager_.reset();
+}
+
+void Server::pollOnce(int timeoutMs)
+{
+    if (!running_) {
+        throw std::logic_error("Server::pollOnce called before start");
+    }
+
+    const int effectiveTimeout = timeoutMs < 0 ? config_.eventTimeoutMs : timeoutMs;
+    const std::vector<Event> events = eventManager_->wait(effectiveTimeout);
+
+    for (std::vector<Event>::const_iterator it = events.begin(); it != events.end(); ++it) {
+        if (stopRequested_) {
+            break;
+        }
+        if (it->fd == listenFd_) {
+            if (it->error) {
+                throw std::runtime_error(eventErrorMessage(*it));
+            }
+            if (hasInterest(it->interests, EventInterest::Read)) {
+                acceptReadyClients();
+            }
+            continue;
+        }
+        handleClientEvent(*it);
+    }
 }
 
 void Server::stop() noexcept
