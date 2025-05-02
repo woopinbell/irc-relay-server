@@ -1,6 +1,7 @@
 #include "IrcApplication.hpp"
 
 #include "IrcMessage.hpp"
+#include "Replies.hpp"
 
 #include <cctype>
 #include <vector>
@@ -79,6 +80,22 @@ void IrcApplication::handleUser(int fd, const IrcMessage& message) {
     client.realname = message.params[3];
     client.hasUser = true;
     maybeRegister(fd);
+}
+
+void IrcApplication::handlePing(int fd, const IrcMessage& message) {
+    if (message.params.empty()) {
+        sendNumeric(fd, 409, std::vector<std::string>(), "No origin specified");
+        return;
+    }
+    std::vector<std::string> params;
+    params.push_back(_serverName);
+    params.push_back(message.params[0]);
+    sendRaw(fd, Replies::formatMessage(_serverName, "PONG", params));
+}
+
+void IrcApplication::handleQuit(int fd, const IrcMessage& message) {
+    const std::string reason = message.params.empty() ? "Client Quit" : message.params[0];
+    requestClose(fd, reason);
 }
 
 void IrcApplication::maybeRegister(int fd) {
