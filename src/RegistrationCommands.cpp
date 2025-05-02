@@ -64,3 +64,30 @@ void IrcApplication::handleNick(int fd, const IrcMessage& message) {
     _clients.setNickname(fd, nextNick);
     maybeRegister(fd);
 }
+
+void IrcApplication::handleUser(int fd, const IrcMessage& message) {
+    ClientState& client = _clients.state(fd);
+    if (client.registered) {
+        sendNumeric(fd, 462, std::vector<std::string>(), "You may not reregister");
+        return;
+    }
+    if (message.params.size() < 4) {
+        sendNumeric(fd, 461, std::vector<std::string>(1, "USER"), "Not enough parameters");
+        return;
+    }
+    client.user = message.params[0];
+    client.realname = message.params[3];
+    client.hasUser = true;
+    maybeRegister(fd);
+}
+
+void IrcApplication::maybeRegister(int fd) {
+    ClientState& client = _clients.state(fd);
+    if (client.registered || !client.passOk || !client.hasNick || !client.hasUser) {
+        return;
+    }
+    client.registered = true;
+    sendNumeric(fd, 1, std::vector<std::string>(), "Welcome to the educational IRC reference, " + client.nick);
+    sendNumeric(fd, 2, std::vector<std::string>(), "Your host is " + _serverName + ", running a C++17 reference server");
+    sendNumeric(fd, 3, std::vector<std::string>(), "This server was created for IRC protocol learning");
+}
