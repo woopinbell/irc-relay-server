@@ -85,3 +85,42 @@ void IrcApplication::handleTopic(int fd, const IrcMessage& message) {
     params.push_back(message.params[1]);
     broadcastToChannel(channel->name(), Replies::formatMessage(prefixFor(fd), "TOPIC", params), -1);
 }
+
+void IrcApplication::handleKick(int fd, const IrcMessage& message) {
+    if (message.params.size() < 2) {
+        sendNumeric(fd, 461, std::vector<std::string>(1, "KICK"), "Not enough parameters");
+        return;
+    }
+
+    Channel* channel = findChannelForCommand(fd, message.params[0], true);
+    if (!channel) {
+        return;
+    }
+    if (!channel->isOperator(fd)) {
+        sendNumeric(fd, 482, std::vector<std::string>(1, channel->name()), "You're not channel operator");
+        return;
+    }
+
+    const std::string targetNick = message.params[1];
+    const int targetFd = findNick(targetNick);
+    if (targetFd == -1) {
+        sendNumeric(fd, 401, std::vector<std::string>(1, targetNick), "No such nick/channel");
+        return;
+    }
+    if (!channel->hasMember(targetFd)) {
+        std::vector<std::string> params;
+        params.push_back(targetNick);
+        params.push_back(channel->name());
+        sendNumeric(fd, 441, params, "They aren't on that channel");
+        return;
+    }
+
+    const std::string comment = message.params.size() > 2 ? message.params[2] : targetNick;
+    std::vector<std::string> params;
+    params.push_back(channel->name());
+    params.push_back(targetNick);
+    params.push_back(comment);
+    broadcastToChannel(channel->name(), Replies::formatMessage(prefixFor(fd), "KICK", params), -1);
+    channel->removeMember(targetFd);
+    eraseChannelIfEmpty(channel->name());
+}
