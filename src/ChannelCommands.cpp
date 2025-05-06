@@ -44,3 +44,16 @@ void IrcApplication::handleJoin(int fd, const IrcMessage& message) {
         sendNames(fd, channel);
     }
 }
+
+void IrcApplication::handlePart(int fd, const IrcMessage& message) {
+    if (message.params.empty()) {
+        sendNumeric(fd, 461, std::vector<std::string>(1, "PART"), "Not enough parameters");
+        return;
+    }
+
+    const std::string reason = message.params.size() > 1 ? message.params[1] : "";
+    const std::vector<std::string> names = splitComma(message.params[0]);
+    for (std::size_t i = 0; i < names.size(); ++i) {
+        partChannel(fd, names[i], reason);
+    }
+}
