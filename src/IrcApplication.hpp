@@ -1,10 +1,12 @@
 #ifndef IRC_APPLICATION_HPP
 #define IRC_APPLICATION_HPP
 
+#include "Channel.hpp"
 #include "ClientRegistry.hpp"
 #include "RuntimeConfig.hpp"
 #include "Server.hpp"
 
+#include <map>
 #include <string>
 #include <vector>
 
@@ -24,8 +26,10 @@ private:
     RuntimeConfig _runtime;
     std::string _serverName;
     ClientRegistry _clients;
+    std::map<std::string, Channel> _channels;
 
     static std::vector<std::string> splitComma(const std::string& value);
+    static bool isChannelTarget(const std::string& target);
 
     void handleMessage(int fd, const IrcMessage& message);
 
@@ -38,6 +42,8 @@ private:
 
     void handlePrivmsg(int fd, const IrcMessage& message);
 
+    Channel& ensureChannel(const std::string& name);
+    Channel* findChannelForCommand(int fd, const std::string& name, bool requireMembership);
     int findNick(const std::string& nickname) const;
     std::string replyTarget(int fd) const;
     std::string prefixFor(int fd) const;
