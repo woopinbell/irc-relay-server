@@ -57,3 +57,31 @@ void IrcApplication::handlePart(int fd, const IrcMessage& message) {
         partChannel(fd, names[i], reason);
     }
 }
+
+void IrcApplication::handleTopic(int fd, const IrcMessage& message) {
+    if (message.params.empty()) {
+        sendNumeric(fd, 461, std::vector<std::string>(1, "TOPIC"), "Not enough parameters");
+        return;
+    }
+
+    Channel* channel = findChannelForCommand(fd, message.params[0], true);
+    if (!channel) {
+        return;
+    }
+
+    if (message.params.size() == 1) {
+        sendTopicReply(fd, *channel);
+        return;
+    }
+
+    if (channel->isTopicProtected() && !channel->isOperator(fd)) {
+        sendNumeric(fd, 482, std::vector<std::string>(1, channel->name()), "You're not channel operator");
+        return;
+    }
+
+    channel->setTopic(message.params[1]);
+    std::vector<std::string> params;
+    params.push_back(channel->name());
+    params.push_back(message.params[1]);
+    broadcastToChannel(channel->name(), Replies::formatMessage(prefixFor(fd), "TOPIC", params), -1);
+}
