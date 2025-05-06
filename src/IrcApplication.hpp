@@ -44,6 +44,8 @@ private:
 
     Channel& ensureChannel(const std::string& name);
     Channel* findChannelForCommand(int fd, const std::string& name, bool requireMembership);
+    void sendTopicReply(int fd, const Channel& channel);
+    void sendNames(int fd, const Channel& channel);
     int findNick(const std::string& nickname) const;
     std::string replyTarget(int fd) const;
     std::string prefixFor(int fd) const;
