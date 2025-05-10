@@ -124,3 +124,47 @@ void IrcApplication::handleKick(int fd, const IrcMessage& message) {
     channel->removeMember(targetFd);
     eraseChannelIfEmpty(channel->name());
 }
+
+void IrcApplication::handleInvite(int fd, const IrcMessage& message) {
+    if (message.params.size() < 2) {
+        sendNumeric(fd, 461, std::vector<std::string>(1, "INVITE"), "Not enough parameters");
+        return;
+    }
+
+    const std::string targetNick = message.params[0];
+    const std::string channelName = message.params[1];
+    const int targetFd = findNick(targetNick);
+    if (targetFd == -1) {
+        sendNumeric(fd, 401, std::vector<std::string>(1, targetNick), "No such nick/channel");
+        return;
+    }
+
+    Channel* channel = findChannelForCommand(fd, channelName, true);
+    if (!channel) {
+        return;
+    }
+    if (channel->isInviteOnly() && !channel->isOperator(fd)) {
+        sendNumeric(fd, 482, std::vector<std::string>(1, channel->name()), "You're not channel operator");
+        return;
+    }
+    if (channel->hasMember(targetFd)) {
+        std::vector<std::string> params;
+        params.push_back(targetNick);
+        params.push_back(channel->name());
+        sendNumeric(fd, 443, params, "is already on channel");
+        return;
+    }
+
+    channel->invite(targetNick);
+
+    std::vector<std::string> invitingParams;
+    invitingParams.push_back(replyTarget(fd));
+    invitingParams.push_back(targetNick);
+    invitingParams.push_back(channel->name());
+    sendRaw(fd, Replies::formatMessage(_serverName, "341", invitingParams));
+
+    std::vector<std::string> inviteParams;
+    inviteParams.push_back(targetNick);
+    inviteParams.push_back(channel->name());
+    sendRaw(targetFd, Replies::formatMessage(prefixFor(fd), "INVITE", inviteParams));
+}
