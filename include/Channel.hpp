@@ -3,6 +3,7 @@
 
 #include <set>
 #include <string>
+#include <ctime>
 #include <vector>
 
 class Channel {
@@ -12,6 +13,8 @@ public:
 
     const std::string& name() const;
     bool empty() const;
+    std::size_t memberCount() const;
+    std::time_t createdAt() const;
 
     bool hasMember(int clientId) const;
     void addMember(int clientId, bool asOperator);
@@ -46,6 +49,7 @@ private:
     std::set<int> _members;
     std::set<int> _operators;
     std::set<std::string> _invited;
+    std::time_t _createdAt;
     bool _inviteOnly;
     bool _topicProtected;
     bool _hasTopic;
