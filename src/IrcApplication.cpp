@@ -2,6 +2,7 @@
 
 #include "Connection.hpp"
 #include "IrcMessage.hpp"
+#include "Replies.hpp"
 
 #include <ctime>
 
@@ -19,6 +20,7 @@ void IrcApplication::onConnect(Connection& connection) {
     client.host = connection.peerAddress();
     client.passOk = _password.empty();
     client.connectedAt = now;
+    client.lastActivityAt = now;
     _clients.state(client.fd) = client;
 }
 
@@ -27,6 +29,7 @@ void IrcApplication::onLine(Connection& connection, const std::string& line) {
     if (!_clients.contains(fd)) {
         onConnect(connection);
     }
+    _clients.state(fd).lastActivityAt = std::time(NULL);
 
     IrcMessage message;
     std::string parseError;
@@ -58,6 +61,8 @@ void IrcApplication::handleMessage(int fd, const IrcMessage& message) {
         handleUser(fd, message);
     } else if (message.command == "PING") {
         handlePing(fd, message);
+    } else if (message.command == "PONG") {
+        handlePong(fd, message);
     } else if (message.command == "QUIT") {
         handleQuit(fd, message);
     } else if (!_clients.state(fd).registered) {
@@ -95,5 +100,22 @@ void IrcApplication::maintainClient(int fd, std::time_t now) {
         now - client.connectedAt >= _runtime.registrationTimeoutSeconds) {
         sendNumeric(fd, 451, std::vector<std::string>(), "Registration timeout");
         requestClose(fd, "registration timeout");
+        return;
+    }
+    if (_runtime.idleTimeoutSeconds <= 0) {
+        return;
+    }
+    if (client.awaitingPong &&
+        now - client.lastPingAt >= _runtime.pingTimeoutSeconds) {
+        sendRaw(fd, Replies::error("Ping timeout"));
+        requestClose(fd, "ping timeout");
+        return;
+    }
+    if (!client.awaitingPong &&
+        now - client.lastActivityAt >= _runtime.idleTimeoutSeconds) {
+        const std::string token = "heartbeat-" + std::to_string(fd) + "-" + std::to_string(now);
+        sendRaw(fd, Replies::formatMessage(_serverName, "PING", std::vector<std::string>(1, token)));
+        client.awaitingPong = true;
+        client.lastPingAt = now;
     }
 }
