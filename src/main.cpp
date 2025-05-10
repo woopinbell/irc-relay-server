@@ -60,6 +60,7 @@ int main(int argc, char** argv) {
         std::cout << "Listening on port " << server.port() << std::endl;
         while (gRunning && server.isRunning()) {
             server.pollOnce();
+            app->onTick();
         }
         server.setConnectHandler(Server::ConnectHandler());
         server.setLineHandler(Server::LineHandler());

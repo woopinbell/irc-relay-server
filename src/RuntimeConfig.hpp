@@ -4,6 +4,7 @@
 #include "Server.hpp"
 
 #include <cstddef>
+#include <string>
 
 class RuntimeConfig {
 public:
@@ -18,6 +19,10 @@ public:
     static void printUsage(const char* programName);
     static int parsePort(const char* value);
     static RuntimeConfig parseOptions(int argc, char** argv, Server::Config& serverConfig);
+
+private:
+    static int parsePositiveInt(const std::string& value, const std::string& name);
+    static bool startsWith(const std::string& value, const std::string& prefix);
 };
 
 #endif // IRC_RUNTIME_CONFIG_HPP

@@ -3,6 +3,8 @@
 #include "Connection.hpp"
 #include "IrcMessage.hpp"
 
+#include <ctime>
+
 IrcApplication::IrcApplication(Server& server, const std::string& password, const RuntimeConfig& runtime)
     : _server(server),
       _password(password),
@@ -11,10 +13,12 @@ IrcApplication::IrcApplication(Server& server, const std::string& password, cons
 }
 
 void IrcApplication::onConnect(Connection& connection) {
+    const std::time_t now = std::time(NULL);
     ClientState client;
     client.fd = connection.fd();
     client.host = connection.peerAddress();
     client.passOk = _password.empty();
+    client.connectedAt = now;
     _clients.state(client.fd) = client;
 }
 
@@ -35,6 +39,14 @@ void IrcApplication::onLine(Connection& connection, const std::string& line) {
 
 void IrcApplication::onDisconnect(Connection& connection, const std::string& reason) {
     removeClientState(connection.fd(), reason, true);
+}
+
+void IrcApplication::onTick() {
+    const std::time_t now = std::time(NULL);
+    const std::vector<int> fds = _clients.fds();
+    for (std::size_t i = 0; i < fds.size(); ++i) {
+        maintainClient(fds[i], now);
+    }
 }
 
 void IrcApplication::handleMessage(int fd, const IrcMessage& message) {
@@ -70,5 +82,18 @@ void IrcApplication::handleMessage(int fd, const IrcMessage& message) {
         handleNames(fd, message);
     } else {
         sendNumeric(fd, 421, std::vector<std::string>(1, message.command), "Unknown command");
+    }
+}
+
+void IrcApplication::maintainClient(int fd, std::time_t now) {
+    ClientState* found = _clients.find(fd);
+    if (found == NULL) {
+        return;
+    }
+    ClientState& client = *found;
+    if (!client.registered &&
+        now - client.connectedAt >= _runtime.registrationTimeoutSeconds) {
+        sendNumeric(fd, 451, std::vector<std::string>(), "Registration timeout");
+        requestClose(fd, "registration timeout");
     }
 }
