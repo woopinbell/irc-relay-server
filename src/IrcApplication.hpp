@@ -35,6 +35,7 @@ private:
 
     void handleMessage(int fd, const IrcMessage& message);
     void maintainClient(int fd, std::time_t now);
+    bool recordCommand(int fd, std::time_t now);
 
     void handlePass(int fd, const IrcMessage& message);
     void handleNick(int fd, const IrcMessage& message);

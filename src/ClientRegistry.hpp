@@ -2,6 +2,7 @@
 #define IRC_CLIENT_REGISTRY_HPP
 
 #include <ctime>
+#include <deque>
 #include <map>
 #include <string>
 #include <vector>
@@ -20,6 +21,7 @@ struct ClientState {
     std::time_t connectedAt;
     std::time_t lastActivityAt;
     std::time_t lastPingAt;
+    std::deque<std::time_t> commandWindow;
 
     ClientState();
 };

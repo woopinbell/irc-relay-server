@@ -21,6 +21,7 @@ public:
     static RuntimeConfig parseOptions(int argc, char** argv, Server::Config& serverConfig);
 
 private:
+    static std::size_t parseSize(const std::string& value, const std::string& name);
     static int parsePositiveInt(const std::string& value, const std::string& name);
     static bool startsWith(const std::string& value, const std::string& prefix);
 };
