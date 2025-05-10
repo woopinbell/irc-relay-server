@@ -49,6 +49,7 @@ private:
     void handleInvite(int fd, const IrcMessage& message);
     void handleMode(int fd, const IrcMessage& message);
     void handleList(int fd, const IrcMessage& message);
+    void handleNames(int fd, const IrcMessage& message);
     void handleChannelMode(int fd, const IrcMessage& message);
 
     Channel& ensureChannel(const std::string& name);
