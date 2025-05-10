@@ -62,6 +62,8 @@ void IrcApplication::handleMessage(int fd, const IrcMessage& message) {
         handleKick(fd, message);
     } else if (message.command == "INVITE") {
         handleInvite(fd, message);
+    } else if (message.command == "MODE") {
+        handleMode(fd, message);
     } else {
         sendNumeric(fd, 421, std::vector<std::string>(1, message.command), "Unknown command");
     }
