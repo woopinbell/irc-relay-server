@@ -220,6 +220,7 @@ void IrcApplication::handleChannelMode(int fd, const IrcMessage& message) {
     }
 
     bool adding = true;
+    std::size_t argIndex = 2;
     const std::string modes = message.params[1];
     for (std::size_t i = 0; i < modes.size(); ++i) {
         const char mode = modes[i];
@@ -238,6 +239,22 @@ void IrcApplication::handleChannelMode(int fd, const IrcMessage& message) {
         } else if (mode == 't') {
             channel->setTopicProtected(adding);
             broadcastMode(fd, *channel, std::string(adding ? "+" : "-") + "t", "");
+        } else if (mode == 'o') {
+            if (argIndex >= message.params.size()) {
+                sendNumeric(fd, 461, std::vector<std::string>(1, "MODE"), "Not enough parameters");
+                continue;
+            }
+            const std::string nick = message.params[argIndex++];
+            const int targetFd = findNick(nick);
+            if (targetFd == -1 || !channel->hasMember(targetFd)) {
+                std::vector<std::string> params;
+                params.push_back(nick);
+                params.push_back(channel->name());
+                sendNumeric(fd, 441, params, "They aren't on that channel");
+                continue;
+            }
+            channel->setOperator(targetFd, adding);
+            broadcastMode(fd, *channel, std::string(adding ? "+" : "-") + "o", _clients.state(targetFd).nick);
         } else {
             sendNumeric(fd, 472, std::vector<std::string>(1, std::string(1, mode)), "is unknown mode char to me");
         }
