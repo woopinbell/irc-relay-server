@@ -40,6 +40,7 @@ void IrcApplication::onLine(Connection& connection, const std::string& line) {
     if (!recordCommand(fd, std::time(NULL))) {
         return;
     }
+    ++_metrics.commandsHandled;
     handleMessage(fd, message);
 }
 
@@ -88,6 +89,8 @@ void IrcApplication::handleMessage(int fd, const IrcMessage& message) {
         handleList(fd, message);
     } else if (message.command == "NAMES") {
         handleNames(fd, message);
+    } else if (message.command == "METRICS") {
+        handleMetrics(fd);
     } else {
         sendNumeric(fd, 421, std::vector<std::string>(1, message.command), "Unknown command");
     }
@@ -131,6 +134,7 @@ bool IrcApplication::recordCommand(int fd, std::time_t now) {
     }
     client.commandWindow.push_back(now);
     if (_runtime.rateLimitCount != 0 && client.commandWindow.size() > _runtime.rateLimitCount) {
+        ++_metrics.rateLimitedClients;
         sendNumeric(fd, 439, std::vector<std::string>(), "Command rate limit exceeded");
         requestClose(fd, "command rate limit exceeded");
         return false;
