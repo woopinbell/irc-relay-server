@@ -119,7 +119,7 @@ void IrcApplication::maybeRegister(int fd) {
         return;
     }
     client.registered = true;
-    sendNumeric(fd, 1, std::vector<std::string>(), "Welcome to the educational IRC reference, " + client.nick);
-    sendNumeric(fd, 2, std::vector<std::string>(), "Your host is " + _serverName + ", running a C++17 reference server");
-    sendNumeric(fd, 3, std::vector<std::string>(), "This server was created for IRC protocol learning");
+    sendNumeric(fd, 1, std::vector<std::string>(), "Welcome to irc-relay-server, " + client.nick);
+    sendNumeric(fd, 2, std::vector<std::string>(), "Your host is " + _serverName);
+    sendNumeric(fd, 3, std::vector<std::string>(), "This server is running a C++17 event backend");
 }
