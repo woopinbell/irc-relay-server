@@ -3,6 +3,8 @@
 #include "Connection.hpp"
 #include "Replies.hpp"
 
+#include <cctype>
+#include <iostream>
 #include <set>
 #include <sstream>
 #include <utility>
@@ -11,7 +13,10 @@
 AppMetrics::AppMetrics()
     : commandsHandled(0),
       messagesRelayed(0),
-      rateLimitedClients(0) {
+      roomsCreated(0),
+      rateLimitedClients(0),
+      idleTimeouts(0),
+      heartbeatPings(0) {
 }
 
 namespace {
@@ -24,6 +29,17 @@ namespace {
             out << values[i];
         }
         return out.str();
+    }
+
+    std::string logSafe(const std::string& value) {
+        std::string copy = value;
+        for (std::size_t i = 0; i < copy.size(); ++i) {
+            const unsigned char ch = static_cast<unsigned char>(copy[i]);
+            if (std::isspace(ch)) {
+                copy[i] = '_';
+            }
+        }
+        return copy;
     }
 }
 
@@ -48,6 +64,14 @@ bool IrcApplication::isChannelTarget(const std::string& target) {
     return !target.empty() && (target[0] == '#' || target[0] == '&');
 }
 
+void logEvent(const std::string& eventName, const std::vector<std::pair<std::string, std::string> >& fields) {
+    std::cerr << "event=" << eventName;
+    for (std::size_t i = 0; i < fields.size(); ++i) {
+        std::cerr << ' ' << fields[i].first << '=' << logSafe(fields[i].second);
+    }
+    std::cerr << std::endl;
+}
+
 void IrcApplication::handleMetrics(int fd) {
     const Server::Metrics& serverMetrics = _server.metrics();
     std::ostringstream out;
@@ -69,6 +93,10 @@ Channel& IrcApplication::ensureChannel(const std::string& name) {
     std::map<std::string, Channel>::iterator it = _channels.find(name);
     if (it == _channels.end()) {
         it = _channels.insert(std::make_pair(name, Channel(name))).first;
+        ++_metrics.roomsCreated;
+        logEvent("room_created", std::vector<std::pair<std::string, std::string> >{
+            std::make_pair("name", name)
+        });
     }
     return it->second;
 }
