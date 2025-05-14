@@ -33,7 +33,8 @@ void IrcApplication::onLine(Connection& connection, const std::string& line) {
     if (!_clients.contains(fd)) {
         onConnect(connection);
     }
-    _clients.state(fd).lastActivityAt = std::time(NULL);
+    const std::time_t now = std::time(NULL);
+    _clients.state(fd).lastActivityAt = now;
 
     IrcMessage message;
     std::string parseError;
@@ -41,7 +42,7 @@ void IrcApplication::onLine(Connection& connection, const std::string& line) {
         sendNumeric(fd, 417, std::vector<std::string>(), parseError);
         return;
     }
-    if (!recordCommand(fd, std::time(NULL))) {
+    if (!recordCommand(fd, now)) {
         return;
     }
     ++_metrics.commandsHandled;
