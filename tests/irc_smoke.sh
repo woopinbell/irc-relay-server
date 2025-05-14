@@ -10,8 +10,8 @@ print(s.getsockname()[1])
 s.close()
 PY
 )}"
-PASSWORD="${IRC_SMOKE_PASSWORD:-educational-secret}"
-LOG_FILE="$(mktemp -t irc_smoke_server.XXXXXX.log)"
+PASSWORD="${IRC_SMOKE_PASSWORD:-relay-secret}"
+LOG_FILE="$(mktemp "${TMPDIR:-/tmp}/irc_smoke_server.XXXXXX")"
 SERVER_PID=""
 
 cleanup() {
@@ -24,7 +24,13 @@ cleanup() {
 trap cleanup EXIT
 
 make -C "${ROOT}" >/dev/null
-"${ROOT}/irc-relay-server" "${PORT}" "${PASSWORD}" --idle-timeout=1 --ping-timeout=2 --registration-timeout=5 >"${LOG_FILE}" 2>&1 &
+"${ROOT}/irc-relay-server" "${PORT}" "${PASSWORD}" \
+	--idle-timeout=2 \
+	--ping-timeout=2 \
+	--registration-timeout=5 \
+	--rate-limit=24:3 \
+	--max-pending-bytes=1048576 \
+	>"${LOG_FILE}" 2>&1 &
 SERVER_PID="$!"
 
 python3 - <<PY
