@@ -15,7 +15,7 @@ RuntimeConfig::RuntimeConfig()
 void RuntimeConfig::printUsage(const char* programName) {
     std::cerr << "Usage: " << programName << " <port> <password> "
               << "[--idle-timeout=N] [--ping-timeout=N] [--registration-timeout=N] "
-              << "[--rate-limit=COUNT:SECONDS]" << std::endl;
+              << "[--rate-limit=COUNT:SECONDS] [--max-pending-bytes=N]" << std::endl;
 }
 
 int RuntimeConfig::parsePort(const char* value) {
@@ -28,7 +28,6 @@ int RuntimeConfig::parsePort(const char* value) {
 }
 
 RuntimeConfig RuntimeConfig::parseOptions(int argc, char** argv, Server::Config& serverConfig) {
-    (void)serverConfig;
     RuntimeConfig runtime;
     for (int i = 3; i < argc; ++i) {
         const std::string arg(argv[i]);
@@ -47,6 +46,8 @@ RuntimeConfig RuntimeConfig::parseOptions(int argc, char** argv, Server::Config&
             runtime.rateLimitCount = parseSize(value.substr(0, colon), "rate limit count");
             runtime.rateLimitWindowSeconds =
                 parsePositiveInt(value.substr(colon + 1), "rate limit window");
+        } else if (startsWith(arg, "--max-pending-bytes=")) {
+            serverConfig.maxPendingBytes = parseSize(arg.substr(20), "max pending bytes");
         } else {
             throw std::runtime_error("unknown option: " + arg);
         }

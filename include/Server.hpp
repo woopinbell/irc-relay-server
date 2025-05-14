@@ -21,6 +21,7 @@ public:
         int backlog = 128;
         int eventTimeoutMs = 1000;
         std::size_t maxLineLength = 512;
+        std::size_t maxPendingBytes = 1048576;
     };
 
     using ConnectHandler = std::function<void(Connection&)>;

@@ -29,11 +29,15 @@ int sendFlags()
 
 } // namespace
 
-Connection::Connection(int fd, std::string peerAddress, std::size_t maxLineLength)
+Connection::Connection(int fd,
+                       std::string peerAddress,
+                       std::size_t maxLineLength,
+                       std::size_t maxPendingBytes)
     : fd_(fd)
     , peerAddress_(std::move(peerAddress))
     , writeOffset_(0)
     , maxLineLength_(maxLineLength == 0 ? 512 : maxLineLength)
+    , maxPendingBytes_(maxPendingBytes == 0 ? 1048576 : maxPendingBytes)
     , peerClosed_(false)
     , closeRequested_(false)
 {
@@ -51,6 +55,7 @@ Connection::Connection(Connection&& other) noexcept
     , writeBuffer_(std::move(other.writeBuffer_))
     , writeOffset_(other.writeOffset_)
     , maxLineLength_(other.maxLineLength_)
+    , maxPendingBytes_(other.maxPendingBytes_)
     , peerClosed_(other.peerClosed_)
     , closeRequested_(other.closeRequested_)
     , closeReason_(std::move(other.closeReason_))
@@ -69,6 +74,7 @@ Connection& Connection::operator=(Connection&& other) noexcept
         writeBuffer_ = std::move(other.writeBuffer_);
         writeOffset_ = other.writeOffset_;
         maxLineLength_ = other.maxLineLength_;
+        maxPendingBytes_ = other.maxPendingBytes_;
         peerClosed_ = other.peerClosed_;
         closeRequested_ = other.closeRequested_;
         closeReason_ = std::move(other.closeReason_);
@@ -183,19 +189,29 @@ Connection::WriteResult Connection::flushPending()
     return result;
 }
 
-void Connection::queueRaw(const std::string& bytes)
+bool Connection::queueRaw(const std::string& bytes)
 {
+    if (!canAppendPending(bytes.size())) {
+        requestClose("outbound queue limit exceeded");
+        return false;
+    }
     writeBuffer_.append(bytes);
+    return true;
 }
 
-void Connection::queueLine(const std::string& line)
+bool Connection::queueLine(const std::string& line)
 {
     std::size_t end = line.size();
     while (end > 0 && (line[end - 1] == '\r' || line[end - 1] == '\n')) {
         --end;
     }
+    if (!canAppendPending(end + 2)) {
+        requestClose("outbound queue limit exceeded");
+        return false;
+    }
     writeBuffer_.append(line, 0, end);
     writeBuffer_.append("\r\n");
+    return true;
 }
 
 void Connection::requestClose(std::string reason)
@@ -257,6 +273,11 @@ bool Connection::extractLines(ReadResult& result)
         }
         result.lines.push_back(line);
     }
+}
+
+bool Connection::canAppendPending(std::size_t byteCount) const noexcept
+{
+    return pendingBytes() + byteCount <= maxPendingBytes_;
 }
 
 } // namespace irc

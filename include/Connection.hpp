@@ -24,7 +24,10 @@ public:
         std::string error;
     };
 
-    Connection(int fd, std::string peerAddress, std::size_t maxLineLength = 512);
+    Connection(int fd,
+               std::string peerAddress,
+               std::size_t maxLineLength = 512,
+               std::size_t maxPendingBytes = 1048576);
     ~Connection();
 
     Connection(const Connection&) = delete;
@@ -40,8 +43,8 @@ public:
     ReadResult readAvailable();
     WriteResult flushPending();
 
-    void queueRaw(const std::string& bytes);
-    void queueLine(const std::string& line);
+    bool queueRaw(const std::string& bytes);
+    bool queueLine(const std::string& line);
 
     void requestClose(std::string reason = "connection close requested");
     bool closeRequested() const noexcept;
@@ -55,12 +58,14 @@ private:
     std::string writeBuffer_;
     std::size_t writeOffset_;
     std::size_t maxLineLength_;
+    std::size_t maxPendingBytes_;
     bool peerClosed_;
     bool closeRequested_;
     std::string closeReason_;
 
     void closeFd() noexcept;
     bool extractLines(ReadResult& result);
+    bool canAppendPending(std::size_t byteCount) const noexcept;
 };
 
 } // namespace irc
