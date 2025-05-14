@@ -180,6 +180,16 @@ def main() -> int:
         alice.send_line("METRICS")
         alice.expect(" NOTICE alice :connections=")
 
+        bots: List[IrcPeer] = []
+        for index in range(6):
+            bot = register(host, port, password, f"bot{index}", f"Bot {index}")
+            bot.send_line("JOIN #load")
+            bot.expect(" JOIN #load")
+            bots.append(bot)
+        peers.extend(bots)
+        bots[0].send_line("PRIVMSG #load :load hello")
+        bots[1].expect(" PRIVMSG #load :load hello")
+
         alice.send_line("QUIT :smoke complete")
         time.sleep(0.05)
         return 0
