@@ -64,6 +64,15 @@ void IrcApplication::onTick() {
     }
 }
 
+void IrcApplication::shutdown(const std::string& reason) {
+    const std::vector<int> fds = _clients.fds();
+    for (std::size_t i = 0; i < fds.size(); ++i) {
+        sendRaw(fds[i], Replies::error(reason));
+        requestClose(fds[i], reason);
+    }
+    logMetrics();
+}
+
 void IrcApplication::logMetrics() const {
     const Server::Metrics& serverMetrics = _server.metrics();
     logEvent("server_metrics", std::vector<std::pair<std::string, std::string> >{
