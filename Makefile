@@ -1,4 +1,5 @@
 NAME := irc-relay-server
+CONNECTION_TEST := tests/connection_test
 
 CXX ?= c++
 CXXFLAGS ?= -std=c++17 -Wall -Wextra -Werror -g
@@ -23,7 +24,7 @@ SRCS := src/main.cpp src/IrcApplication.cpp src/RegistrationCommands.cpp src/Mes
 OBJS := $(SRCS:.cpp=.o)
 DEPS := $(OBJS:.o=.d)
 
-.PHONY: all clean fclean re test smoke
+.PHONY: all clean connection-test fclean re test smoke
 
 all: $(NAME)
 
@@ -33,13 +34,20 @@ $(NAME): $(OBJS)
 %.o: %.cpp
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -MMD -MP -c $< -o $@
 
-test: all
+$(CONNECTION_TEST): tests/connection_test.cpp src/Connection.cpp include/Connection.hpp src/ConnectionLimits.hpp
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) tests/connection_test.cpp src/Connection.cpp -o $@
+
+connection-test: $(CONNECTION_TEST)
+	./$(CONNECTION_TEST)
+
+test: all connection-test
 	bash tests/irc_smoke.sh
 
 smoke: test
 
 clean:
-	rm -f $(OBJS) $(DEPS)
+	rm -f $(OBJS) $(DEPS) $(CONNECTION_TEST)
+	rm -rf $(CONNECTION_TEST).dSYM
 
 fclean: clean
 	rm -f $(NAME)
