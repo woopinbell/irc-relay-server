@@ -38,6 +38,7 @@ public:
     using ErrorHandler = std::function<void(const std::string&)>;
 
     explicit Server(Config config);
+    Server(Config config, std::unique_ptr<EventManager> eventManager);
     ~Server();
 
     Server(const Server&) = delete;
@@ -85,10 +86,10 @@ private:
     void acceptReadyClients();
     void rejectReadyClient();
     void handleClientEvent(const Event& event);
-    void refreshInterest(Connection& connection);
+    bool refreshInterest(int fd);
     void closeListenSocket() noexcept;
     void closeAllConnections();
-    void reportError(const std::string& message) const;
+    void reportError(const std::string& message) const noexcept;
 };
 
 } // namespace irc
