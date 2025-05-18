@@ -1,5 +1,6 @@
 NAME := irc-relay-server
 CONNECTION_TEST := tests/connection_test
+SERVER_LIFETIME_TEST := tests/server_lifetime_test
 
 CXX ?= c++
 CXXFLAGS ?= -std=c++17 -Wall -Wextra -Werror -g
@@ -24,7 +25,7 @@ SRCS := src/main.cpp src/IrcApplication.cpp src/RegistrationCommands.cpp src/Mes
 OBJS := $(SRCS:.cpp=.o)
 DEPS := $(OBJS:.o=.d)
 
-.PHONY: all clean connection-test fclean re test smoke
+.PHONY: all clean connection-test fclean re test unit smoke
 
 all: $(NAME)
 
@@ -40,14 +41,20 @@ $(CONNECTION_TEST): tests/connection_test.cpp src/Connection.cpp include/Connect
 connection-test: $(CONNECTION_TEST)
 	./$(CONNECTION_TEST)
 
-test: all connection-test
+$(SERVER_LIFETIME_TEST): tests/server_lifetime_test.cpp src/Connection.cpp src/Server.cpp $(EVENT_SRC) include/Server.hpp include/Connection.hpp include/EventManager.hpp src/ConnectionLimits.hpp
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) tests/server_lifetime_test.cpp src/Connection.cpp src/Server.cpp $(EVENT_SRC) -o $@
+
+unit: $(SERVER_LIFETIME_TEST)
+	./$(SERVER_LIFETIME_TEST)
+
+test: all connection-test unit
 	bash tests/irc_smoke.sh
 
 smoke: test
 
 clean:
-	rm -f $(OBJS) $(DEPS) $(CONNECTION_TEST)
-	rm -rf $(CONNECTION_TEST).dSYM
+	rm -f $(OBJS) $(DEPS) $(CONNECTION_TEST) $(SERVER_LIFETIME_TEST)
+	rm -rf $(CONNECTION_TEST).dSYM $(SERVER_LIFETIME_TEST).dSYM
 
 fclean: clean
 	rm -f $(NAME)
