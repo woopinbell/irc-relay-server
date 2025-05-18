@@ -1,8 +1,36 @@
 #include "RuntimeConfig.hpp"
 
-#include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
+
+namespace {
+
+template <typename Unsigned>
+Unsigned parseUnsignedDecimal(const std::string& value,
+                              Unsigned maximum,
+                              const std::string& errorMessage) {
+    if (value.empty()) {
+        throw std::runtime_error(errorMessage);
+    }
+
+    Unsigned parsed = 0;
+    for (std::string::size_type i = 0; i < value.size(); ++i) {
+        if (value[i] < '0' || value[i] > '9') {
+            throw std::runtime_error(errorMessage);
+        }
+
+        const Unsigned digit = static_cast<Unsigned>(value[i] - '0');
+        if (parsed > maximum / 10
+            || (parsed == maximum / 10 && digit > maximum % 10)) {
+            throw std::runtime_error(errorMessage);
+        }
+        parsed = static_cast<Unsigned>(parsed * 10 + digit);
+    }
+    return parsed;
+}
+
+} // namespace
 
 RuntimeConfig::RuntimeConfig()
     : rateLimitCount(24),
@@ -20,9 +48,12 @@ void RuntimeConfig::printUsage(const char* programName) {
 }
 
 int RuntimeConfig::parsePort(const char* value) {
-    char* end = NULL;
-    const long port = std::strtol(value, &end, 10);
-    if (!value[0] || *end != '\0' || port <= 0 || port > 65535) {
+    const std::string text(value == NULL ? "" : value);
+    const unsigned short port = parseUnsignedDecimal<unsigned short>(
+        text,
+        std::numeric_limits<unsigned short>::max(),
+        "port must be an integer from 1 to 65535");
+    if (port == 0) {
         throw std::runtime_error("port must be an integer from 1 to 65535");
     }
     return static_cast<int>(port);
@@ -59,18 +90,18 @@ RuntimeConfig RuntimeConfig::parseOptions(int argc, char** argv, Server::Config&
 }
 
 std::size_t RuntimeConfig::parseSize(const std::string& value, const std::string& name) {
-    char* end = NULL;
-    const unsigned long parsed = std::strtoul(value.c_str(), &end, 10);
-    if (value.empty() || *end != '\0') {
-        throw std::runtime_error(name + " must be an unsigned integer");
-    }
-    return static_cast<std::size_t>(parsed);
+    return parseUnsignedDecimal<std::size_t>(
+        value,
+        std::numeric_limits<std::size_t>::max(),
+        name + " must be an unsigned integer");
 }
 
 int RuntimeConfig::parsePositiveInt(const std::string& value, const std::string& name) {
-    char* end = NULL;
-    const long parsed = std::strtol(value.c_str(), &end, 10);
-    if (value.empty() || *end != '\0' || parsed <= 0 || parsed > 86400) {
+    const unsigned int parsed = parseUnsignedDecimal<unsigned int>(
+        value,
+        86400U,
+        name + " must be a positive integer");
+    if (parsed == 0) {
         throw std::runtime_error(name + " must be a positive integer");
     }
     return static_cast<int>(parsed);
