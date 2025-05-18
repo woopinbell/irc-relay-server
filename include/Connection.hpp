@@ -1,7 +1,10 @@
 #ifndef IRC_CONNECTION_HPP
 #define IRC_CONNECTION_HPP
 
+#include <sys/types.h>
+
 #include <cstddef>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -9,6 +12,8 @@ namespace irc {
 
 class Connection {
 public:
+    using SendOperation = std::function<ssize_t(int, const void*, std::size_t, int)>;
+
     struct ReadResult {
         std::vector<std::string> lines;
         bool wouldBlock = false;
@@ -27,7 +32,8 @@ public:
     Connection(int fd,
                std::string peerAddress,
                std::size_t maxLineLength = 512,
-               std::size_t maxPendingBytes = 1048576);
+               std::size_t maxPendingBytes = 1048576,
+               SendOperation sendOperation = SendOperation());
     ~Connection();
 
     Connection(const Connection&) = delete;
@@ -59,6 +65,7 @@ private:
     std::size_t writeOffset_;
     std::size_t maxLineLength_;
     std::size_t maxPendingBytes_;
+    SendOperation sendOperation_;
     bool peerClosed_;
     bool closeRequested_;
     std::string closeReason_;

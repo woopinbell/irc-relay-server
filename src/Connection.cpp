@@ -1,4 +1,5 @@
 #include "Connection.hpp"
+#include "ConnectionLimits.hpp"
 
 #include <sys/socket.h>
 #include <unistd.h>
@@ -27,17 +28,24 @@ int sendFlags()
 #endif
 }
 
+ssize_t sendBytes(int fd, const void* data, std::size_t size, int flags)
+{
+    return ::send(fd, data, size, flags);
+}
+
 } // namespace
 
 Connection::Connection(int fd,
                        std::string peerAddress,
                        std::size_t maxLineLength,
-                       std::size_t maxPendingBytes)
+                       std::size_t maxPendingBytes,
+                       SendOperation sendOperation)
     : fd_(fd)
     , peerAddress_(std::move(peerAddress))
     , writeOffset_(0)
     , maxLineLength_(maxLineLength == 0 ? 512 : maxLineLength)
     , maxPendingBytes_(maxPendingBytes == 0 ? 1048576 : maxPendingBytes)
+    , sendOperation_(sendOperation ? std::move(sendOperation) : SendOperation(sendBytes))
     , peerClosed_(false)
     , closeRequested_(false)
 {
@@ -56,6 +64,7 @@ Connection::Connection(Connection&& other) noexcept
     , writeOffset_(other.writeOffset_)
     , maxLineLength_(other.maxLineLength_)
     , maxPendingBytes_(other.maxPendingBytes_)
+    , sendOperation_(std::move(other.sendOperation_))
     , peerClosed_(other.peerClosed_)
     , closeRequested_(other.closeRequested_)
     , closeReason_(std::move(other.closeReason_))
@@ -75,6 +84,7 @@ Connection& Connection::operator=(Connection&& other) noexcept
         writeOffset_ = other.writeOffset_;
         maxLineLength_ = other.maxLineLength_;
         maxPendingBytes_ = other.maxPendingBytes_;
+        sendOperation_ = std::move(other.sendOperation_);
         peerClosed_ = other.peerClosed_;
         closeRequested_ = other.closeRequested_;
         closeReason_ = std::move(other.closeReason_);
@@ -150,10 +160,19 @@ Connection::WriteResult Connection::flushPending()
     while (wantsWrite()) {
         const char* data = writeBuffer_.data() + writeOffset_;
         const std::size_t size = writeBuffer_.size() - writeOffset_;
-        const ssize_t count = ::send(fd_, data, size, sendFlags());
+        const ssize_t count = sendOperation_
+            ? sendOperation_(fd_, data, size, sendFlags())
+            : sendBytes(fd_, data, size, sendFlags());
 
         if (count > 0) {
-            writeOffset_ += static_cast<std::size_t>(count);
+            const std::size_t sent = static_cast<std::size_t>(count);
+            if (sent > size) {
+                result.hasError = true;
+                result.error = "send returned more bytes than requested";
+                requestClose(result.error);
+                break;
+            }
+            writeOffset_ += sent;
             continue;
         }
         if (count == 0) {
@@ -205,7 +224,9 @@ bool Connection::queueLine(const std::string& line)
     while (end > 0 && (line[end - 1] == '\r' || line[end - 1] == '\n')) {
         --end;
     }
-    if (!canAppendPending(end + 2)) {
+    const std::size_t pending = pendingBytes();
+    if (!detail::canAppendPending(pending, end, maxPendingBytes_)
+        || !detail::canAppendPending(pending + end, 2, maxPendingBytes_)) {
         requestClose("outbound queue limit exceeded");
         return false;
     }
@@ -277,7 +298,7 @@ bool Connection::extractLines(ReadResult& result)
 
 bool Connection::canAppendPending(std::size_t byteCount) const noexcept
 {
-    return pendingBytes() + byteCount <= maxPendingBytes_;
+    return detail::canAppendPending(pendingBytes(), byteCount, maxPendingBytes_);
 }
 
 } // namespace irc
