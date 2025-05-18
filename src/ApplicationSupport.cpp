@@ -114,15 +114,16 @@ Channel* IrcApplication::findChannelForCommand(int fd, const std::string& name, 
     return &it->second;
 }
 
-void IrcApplication::sendTopicReply(int fd, const Channel& channel) {
+bool IrcApplication::sendTopicReply(int fd, const Channel& channel) {
+    const std::string channelName = channel.name();
     if (channel.hasTopic()) {
-        sendNumeric(fd, 332, std::vector<std::string>(1, channel.name()), channel.topic());
-    } else {
-        sendNumeric(fd, 331, std::vector<std::string>(1, channel.name()), "No topic is set");
+        return sendNumeric(fd, 332, std::vector<std::string>(1, channelName), channel.topic());
     }
+    return sendNumeric(fd, 331, std::vector<std::string>(1, channelName), "No topic is set");
 }
 
-void IrcApplication::sendNames(int fd, const Channel& channel) {
+bool IrcApplication::sendNames(int fd, const Channel& channel) {
+    const std::string channelName = channel.name();
     std::vector<std::string> names;
     const std::vector<int> members = channel.members();
     for (std::size_t i = 0; i < members.size(); ++i) {
@@ -135,9 +136,11 @@ void IrcApplication::sendNames(int fd, const Channel& channel) {
 
     std::vector<std::string> nameParams;
     nameParams.push_back("=");
-    nameParams.push_back(channel.name());
-    sendNumeric(fd, 353, nameParams, joinWords(names, " "));
-    sendNumeric(fd, 366, std::vector<std::string>(1, channel.name()), "End of /NAMES list");
+    nameParams.push_back(channelName);
+    if (!sendNumeric(fd, 353, nameParams, joinWords(names, " "))) {
+        return false;
+    }
+    return sendNumeric(fd, 366, std::vector<std::string>(1, channelName), "End of /NAMES list");
 }
 
 void IrcApplication::partAllChannels(int fd, const std::string& reason) {
@@ -169,18 +172,24 @@ void IrcApplication::partChannel(int fd, const std::string& channelName, const s
         params.push_back(reason);
     }
     broadcastToChannel(channelName, Replies::formatMessage(prefixFor(fd), "PART", params), -1);
+    it = _channels.find(channelName);
+    if (it == _channels.end()) {
+        return;
+    }
     it->second.removeMember(fd);
     eraseChannelIfEmpty(channelName);
 }
 
-void IrcApplication::broadcastMode(int fd, const Channel& channel, const std::string& mode, const std::string& arg) {
+bool IrcApplication::broadcastMode(int fd, const Channel& channel, const std::string& mode, const std::string& arg) {
+    const std::string channelName = channel.name();
     std::vector<std::string> params;
-    params.push_back(channel.name());
+    params.push_back(channelName);
     params.push_back(mode);
     if (!arg.empty()) {
         params.push_back(arg);
     }
-    broadcastToChannel(channel.name(), Replies::formatMessage(prefixFor(fd), "MODE", params), -1);
+    broadcastToChannel(channelName, Replies::formatMessage(prefixFor(fd), "MODE", params), -1);
+    return _clients.contains(fd) && _channels.find(channelName) != _channels.end();
 }
 
 void IrcApplication::broadcastToChannel(const std::string& channelName, const std::string& line, int exceptFd) {
@@ -248,19 +257,19 @@ std::string IrcApplication::prefixFor(const ClientState& client) const {
     return Replies::hostmask(client.nick, client.user, client.host);
 }
 
-void IrcApplication::sendNumeric(int fd, int numericCode, const std::vector<std::string>& params, const std::string& trailing) {
-    sendRaw(fd, Replies::numeric(_serverName, replyTarget(fd), numericCode, params, trailing));
+bool IrcApplication::sendNumeric(int fd, int numericCode, const std::vector<std::string>& params, const std::string& trailing) {
+    return sendRaw(fd, Replies::numeric(_serverName, replyTarget(fd), numericCode, params, trailing));
 }
 
-void IrcApplication::sendNumericRaw(int fd, int numericCode, const std::vector<std::string>& params) {
+bool IrcApplication::sendNumericRaw(int fd, int numericCode, const std::vector<std::string>& params) {
     std::vector<std::string> allParams;
     allParams.push_back(replyTarget(fd));
     allParams.insert(allParams.end(), params.begin(), params.end());
-    sendRaw(fd, Replies::formatMessage(_serverName, Replies::code(numericCode), allParams));
+    return sendRaw(fd, Replies::formatMessage(_serverName, Replies::code(numericCode), allParams));
 }
 
-void IrcApplication::sendRaw(int fd, const std::string& line) {
-    _server.sendTo(fd, line);
+bool IrcApplication::sendRaw(int fd, const std::string& line) {
+    return _server.sendTo(fd, line);
 }
 
 void IrcApplication::requestClose(int fd, const std::string& reason) {
