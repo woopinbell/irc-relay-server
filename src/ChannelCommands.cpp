@@ -222,23 +222,31 @@ void IrcApplication::handleList(int fd, const IrcMessage& message) {
         requested.insert(names.begin(), names.end());
     }
 
-    sendNumericRaw(fd, 321, std::vector<std::string>{"Channel", "Users", "Name"});
-    for (std::map<std::string, Channel>::const_iterator it = _channels.begin(); it != _channels.end(); ++it) {
+    if (!sendNumericRaw(fd, 321, std::vector<std::string>{"Channel", "Users", "Name"})) {
+        return;
+    }
+    for (std::map<std::string, Channel>::const_iterator it = _channels.begin();
+         it != _channels.end(); ++it) {
         if (!requested.empty() && requested.find(it->first) == requested.end()) {
             continue;
         }
         std::vector<std::string> params;
         params.push_back(it->first);
         params.push_back(std::to_string(it->second.memberCount()));
-        sendNumeric(fd, 322, params, it->second.hasTopic() ? it->second.topic() : "open room");
+        if (!sendNumeric(fd, 322, params, it->second.hasTopic() ? it->second.topic() : "open room")) {
+            return;
+        }
     }
     sendNumeric(fd, 323, std::vector<std::string>(), "End of /LIST");
 }
 
 void IrcApplication::handleNames(int fd, const IrcMessage& message) {
     if (message.params.empty()) {
-        for (std::map<std::string, Channel>::const_iterator it = _channels.begin(); it != _channels.end(); ++it) {
-            sendNames(fd, it->second);
+        for (std::map<std::string, Channel>::const_iterator it = _channels.begin();
+             it != _channels.end(); ++it) {
+            if (!sendNames(fd, it->second)) {
+                return;
+            }
         }
         return;
     }
@@ -247,9 +255,12 @@ void IrcApplication::handleNames(int fd, const IrcMessage& message) {
     for (std::size_t i = 0; i < names.size(); ++i) {
         std::map<std::string, Channel>::const_iterator found = _channels.find(names[i]);
         if (found != _channels.end()) {
-            sendNames(fd, found->second);
-        } else {
-            sendNumeric(fd, 366, std::vector<std::string>(1, names[i]), "End of /NAMES list");
+            if (!sendNames(fd, found->second)) {
+                return;
+            }
+        } else if (!sendNumeric(fd, 366, std::vector<std::string>(1, names[i]),
+                                "End of /NAMES list")) {
+            return;
         }
     }
 }
@@ -260,19 +271,20 @@ void IrcApplication::handleChannelMode(int fd, const IrcMessage& message) {
         return;
     }
 
+    const std::string channelName = channel->name();
     if (message.params.size() == 1) {
         std::vector<std::string> params;
-        params.push_back(channel->name());
+        params.push_back(channelName);
         params.push_back(channel->modeString());
         sendNumericRaw(fd, 324, params);
         return;
     }
     if (!channel->hasMember(fd)) {
-        sendNumeric(fd, 442, std::vector<std::string>(1, channel->name()), "You're not on that channel");
+        sendNumeric(fd, 442, std::vector<std::string>(1, channelName), "You're not on that channel");
         return;
     }
     if (!channel->isOperator(fd)) {
-        sendNumeric(fd, 482, std::vector<std::string>(1, channel->name()), "You're not channel operator");
+        sendNumeric(fd, 482, std::vector<std::string>(1, channelName), "You're not channel operator");
         return;
     }
 
@@ -292,28 +304,43 @@ void IrcApplication::handleChannelMode(int fd, const IrcMessage& message) {
 
         if (mode == 'i') {
             channel->setInviteOnly(adding);
-            broadcastMode(fd, *channel, std::string(adding ? "+" : "-") + "i", "");
+            if (!broadcastMode(fd, *channel, std::string(adding ? "+" : "-") + "i", "")) {
+                return;
+            }
         } else if (mode == 't') {
             channel->setTopicProtected(adding);
-            broadcastMode(fd, *channel, std::string(adding ? "+" : "-") + "t", "");
+            if (!broadcastMode(fd, *channel, std::string(adding ? "+" : "-") + "t", "")) {
+                return;
+            }
         } else if (mode == 'o') {
             if (argIndex >= message.params.size()) {
-                sendNumeric(fd, 461, std::vector<std::string>(1, "MODE"), "Not enough parameters");
+                if (!sendNumeric(fd, 461, std::vector<std::string>(1, "MODE"),
+                                 "Not enough parameters")) {
+                    return;
+                }
                 continue;
             }
             const std::string nick = message.params[argIndex++];
             const int targetFd = findNick(nick);
-            if (targetFd == -1 || !channel->hasMember(targetFd)) {
+            const ClientState* targetClient = _clients.find(targetFd);
+            if (targetClient == NULL || !channel->hasMember(targetFd)) {
                 std::vector<std::string> params;
                 params.push_back(nick);
-                params.push_back(channel->name());
-                sendNumeric(fd, 441, params, "They aren't on that channel");
+                params.push_back(channelName);
+                if (!sendNumeric(fd, 441, params, "They aren't on that channel")) {
+                    return;
+                }
                 continue;
             }
+            const std::string targetNick = targetClient->nick;
             channel->setOperator(targetFd, adding);
-            broadcastMode(fd, *channel, std::string(adding ? "+" : "-") + "o", _clients.state(targetFd).nick);
-        } else {
-            sendNumeric(fd, 472, std::vector<std::string>(1, std::string(1, mode)), "is unknown mode char to me");
+            if (!broadcastMode(fd, *channel, std::string(adding ? "+" : "-") + "o",
+                               targetNick)) {
+                return;
+            }
+        } else if (!sendNumeric(fd, 472, std::vector<std::string>(1, std::string(1, mode)),
+                                "is unknown mode char to me")) {
+            return;
         }
     }
 }
