@@ -3,6 +3,7 @@ set -euo pipefail
 export PYTHONDONTWRITEBYTECODE=1
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+BIN="${IRC_SERVER_BIN:-${ROOT}/build/bin/irc-relay-server}"
 PORT="${IRC_SMOKE_PORT:-$(python3 - <<'PY'
 import socket
 s = socket.socket()
@@ -25,7 +26,7 @@ cleanup() {
 trap cleanup EXIT
 
 make -C "${ROOT}" >/dev/null
-"${ROOT}/irc-relay-server" "${PORT}" "${PASSWORD}" \
+"${BIN}" "${PORT}" "${PASSWORD}" \
 	--idle-timeout=2 \
 	--ping-timeout=2 \
 	--registration-timeout=5 \
@@ -52,7 +53,7 @@ PY
 
 python3 "${ROOT}/tools/irc_smoke_client.py" 127.0.0.1 "${PORT}" "${PASSWORD}"
 python3 "${ROOT}/tests/irc_contract.py" \
-	"${ROOT}/irc-relay-server" 127.0.0.1 "${PORT}" "${PASSWORD}" \
+	"${BIN}" 127.0.0.1 "${PORT}" "${PASSWORD}" \
 	"${SERVER_PID}" "${LOG_FILE}"
 wait "${SERVER_PID}"
 SERVER_PID=""

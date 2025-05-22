@@ -1,20 +1,66 @@
-# irc-relay-server
+# IRC Relay Server
 
-단일 프로세스에서 여러 IRC 클라이언트의 연결과 메시지를 중계하는 C++17 서버를
-구현한다. 개발 과정에서는 운영체제별 이벤트 API를 공통 경계 뒤에 두고, 연결 수명과
-프로토콜 상태의 소유자를 명확하게 유지한다.
+![Language](https://img.shields.io/badge/language-C%2B%2B17-blue?logo=cplusplus&logoColor=white)
+![Platform](https://img.shields.io/badge/platform-POSIX-lightgrey)
 
-## 초기 개발 규약
+`irc-relay-server`는 42 `ft_irc` 과제를 변형한 C++17 프로젝트입니다. 단일 프로세스에서 여러 IRC 클라이언트의 TCP 연결을 관리하고, 등록/개인 메시지/채널 메시지를 중계합니다.
 
-- C++17과 `-Wall -Wextra -Werror`를 기본 컴파일 계약으로 사용한다.
-- Linux와 macOS의 논블로킹 이벤트 처리 경로를 함께 고려한다.
-- 소켓, 버퍼, 사용자 및 채널 상태는 수명과 정리 책임이 드러나는 객체가 소유한다.
-- 기능, 수정, 테스트, 문서와 CI 변경은 가능한 한 독립된 커밋으로 남긴다.
-- 각 개발 커밋은 깨끗한 상태에서 컴파일하고, 존재하는 검사를 모두 통과해야 한다.
-- 비밀번호나 생성된 빌드 산출물은 저장소에 기록하지 않는다.
+## 지원 범위
 
-## 예정 범위
+- Linux `epoll`과 macOS `kqueue` 이벤트 백엔드
+- 논블로킹 TCP 연결과 IRC line framing
+- 사용자 등록 및 기본 IRC 명령
+- 개인 메시지와 채널 메시지 중계
+- idle/ping timeout, rate limit, pending output 제한
+- 연결/서버/애플리케이션 lifetime과 이벤트 공정성 검증
 
-첫 개발 범위는 TCP 연결 수락, IRC 프레임 처리, 사용자 등록, 개인·채널 메시지 중계와
-기본 채널 상태 관리다. 서버 간 연동, 영속 저장소, TLS 종료와 전체 IRC 표준 구현은
-초기 범위에 포함하지 않는다.
+## 빌드 및 실행
+
+```sh
+make
+./build/bin/irc-relay-server <port> <password> [options]
+```
+
+예시:
+
+```sh
+./build/bin/irc-relay-server 6667 relay-secret \
+    --idle-timeout=120 \
+    --ping-timeout=30 \
+    --registration-timeout=60
+```
+
+빌드 산출물은 다음 위치에 생성됩니다.
+
+```text
+build/bin/irc-relay-server
+build/obj/
+build/test/
+```
+
+## 테스트
+
+```sh
+make test
+```
+
+테스트는 connection, server/application lifetime, IRC smoke contract와 고동시성 이벤트 공정성을 검사합니다.
+
+개별 테스트는 다음과 같이 실행할 수 있습니다.
+
+```sh
+make connection-test
+make unit
+make application-test
+make event-test
+```
+
+## 정리
+
+```sh
+make clean  # build/ 및 테스트 캐시 삭제
+make fclean # clean과 동일
+make re     # fclean 후 전체 재빌드
+```
+
+생성된 실행 파일과 object는 저장소에 포함하지 않습니다.
