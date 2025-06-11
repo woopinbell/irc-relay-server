@@ -3,9 +3,13 @@
 #include "EventManager.hpp"
 
 #include <sys/event.h>
+#include <sys/time.h>
 #include <unistd.h>
 
+#include <array>
 #include <cerrno>
+#include <cstring>
+#include <stdexcept>
 #include <system_error>
 #include <unordered_map>
 
@@ -69,6 +73,51 @@ public:
         interests_.erase(found);
     }
 
+    std::vector<Event> wait(int timeoutMs) override
+    {
+        std::array<struct kevent, 128> nativeEvents;
+        struct timespec timeout;
+        struct timespec* timeoutPtr = NULL;
+
+        if (timeoutMs >= 0) {
+            timeout.tv_sec = timeoutMs / 1000;
+            timeout.tv_nsec = (timeoutMs % 1000) * 1000000;
+            timeoutPtr = &timeout;
+        }
+
+        const int count =
+            ::kevent(kqueueFd_, NULL, 0, nativeEvents.data(), nativeEvents.size(), timeoutPtr);
+        if (count == -1) {
+            if (errno == EINTR) {
+                return std::vector<Event>();
+            }
+            throw std::system_error(errno, std::generic_category(), "kevent wait");
+        }
+
+        std::vector<Event> events;
+        events.reserve(static_cast<std::size_t>(count));
+        for (int i = 0; i < count; ++i) {
+            Event event;
+            event.fd = static_cast<int>(nativeEvents[static_cast<std::size_t>(i)].ident);
+            event.error = (nativeEvents[static_cast<std::size_t>(i)].flags & EV_ERROR) != 0;
+            event.hangup = (nativeEvents[static_cast<std::size_t>(i)].flags & EV_EOF) != 0;
+            if (event.error) {
+                event.errorCode = static_cast<int>(nativeEvents[static_cast<std::size_t>(i)].data);
+            } else if (event.hangup) {
+                event.errorCode = static_cast<int>(nativeEvents[static_cast<std::size_t>(i)].fflags);
+            }
+
+            if (nativeEvents[static_cast<std::size_t>(i)].filter == EVFILT_READ) {
+                event.interests |= EventInterest::Read;
+            } else if (nativeEvents[static_cast<std::size_t>(i)].filter == EVFILT_WRITE) {
+                event.interests |= EventInterest::Write;
+            }
+
+            events.push_back(event);
+        }
+        return events;
+    }
+
 private:
     int kqueueFd_;
     std::unordered_map<int, EventInterest> interests_;
@@ -118,6 +167,12 @@ private:
 };
 
 } // namespace
+
+std::unique_ptr<EventManager> EventManager::createDefault()
+{
+    return std::unique_ptr<EventManager>(new KqueueEventManager());
+}
+
 } // namespace irc
 
 #endif
