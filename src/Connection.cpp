@@ -84,4 +84,36 @@ void Connection::closeFd() noexcept
     }
 }
 
+bool Connection::extractLines(ReadResult& result)
+{
+    while (true) {
+        const std::string::size_type newline = readBuffer_.find('\n');
+        if (newline == std::string::npos) {
+            if (readBuffer_.size() > maxLineLength_) {
+                result.hasError = true;
+                result.error = "incoming line exceeds maximum length";
+                requestClose(result.error);
+                readBuffer_.clear();
+                return false;
+            }
+            return true;
+        }
+
+        if (newline + 1 > maxLineLength_) {
+            result.hasError = true;
+            result.error = "incoming line exceeds maximum length";
+            requestClose(result.error);
+            readBuffer_.clear();
+            return false;
+        }
+
+        std::string line = readBuffer_.substr(0, newline);
+        readBuffer_.erase(0, newline + 1);
+        if (!line.empty() && line[line.size() - 1] == '\r') {
+            line.erase(line.size() - 1);
+        }
+        result.lines.push_back(line);
+    }
+}
+
 } // namespace irc
