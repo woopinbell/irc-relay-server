@@ -202,6 +202,28 @@ void Server::setErrorHandler(ErrorHandler handler)
     onError_ = std::move(handler);
 }
 
+bool Server::sendTo(int fd, const std::string& line)
+{
+    Connection* connection = findConnection(fd);
+    if (connection == NULL) {
+        return false;
+    }
+    connection->queueLine(line);
+    refreshInterest(*connection);
+    return true;
+}
+
+bool Server::queueRawTo(int fd, const std::string& bytes)
+{
+    Connection* connection = findConnection(fd);
+    if (connection == NULL) {
+        return false;
+    }
+    connection->queueRaw(bytes);
+    refreshInterest(*connection);
+    return true;
+}
+
 void Server::createListenSocket()
 {
     int fd = ::socket(AF_INET, SOCK_STREAM, 0);
@@ -360,7 +382,30 @@ void Server::handleClientEvent(const Event& event)
         return;
     }
 
+    if (hasInterest(event.interests, EventInterest::Write) && connection->wantsWrite()) {
+        Connection::WriteResult writeResult = connection->flushPending();
+        if (writeResult.hasError) {
+            disconnect(connection->fd(), writeResult.error);
+            return;
+        }
+    }
+
     refreshInterest(*connection);
+}
+
+void Server::refreshInterest(Connection& connection)
+{
+    if (connection.closeRequested() && !connection.wantsWrite()) {
+        disconnect(connection.fd(), connection.closeReason());
+        return;
+    }
+
+    EventInterest interests =
+        connection.closeRequested() ? EventInterest::Write : EventInterest::Read;
+    if (connection.wantsWrite()) {
+        interests |= EventInterest::Write;
+    }
+    eventManager_->updateFd(connection.fd(), interests);
 }
 
 } // namespace irc
