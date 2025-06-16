@@ -309,4 +309,58 @@ void Server::acceptReadyClients()
     }
 }
 
+void Server::handleClientEvent(const Event& event)
+{
+    std::unordered_map<int, std::unique_ptr<Connection> >::iterator found =
+        connections_.find(event.fd);
+    if (found == connections_.end()) {
+        return;
+    }
+
+    Connection* connection = found->second.get();
+    const int fd = connection->fd();
+
+    if (event.error) {
+        disconnect(fd, eventErrorMessage(event));
+        return;
+    }
+
+    if (hasInterest(event.interests, EventInterest::Read) && !connection->closeRequested()) {
+        Connection::ReadResult readResult = connection->readAvailable();
+        if (readResult.hasError) {
+            disconnect(fd, readResult.error);
+            return;
+        }
+
+        for (std::vector<std::string>::const_iterator line = readResult.lines.begin();
+             line != readResult.lines.end();
+             ++line) {
+            if (onLine_) {
+                try {
+                    onLine_(*connection, *line);
+                } catch (const std::exception& exception) {
+                    reportError(exception.what());
+                    connection->requestClose("line handler error");
+                }
+            }
+            if (connections_.find(fd) == connections_.end()) {
+                return;
+            }
+            if (connection->closeRequested()) {
+                break;
+            }
+        }
+
+        if (readResult.peerClosed) {
+            connection->requestClose("peer closed connection");
+        }
+    }
+
+    if (connections_.find(fd) == connections_.end()) {
+        return;
+    }
+
+    refreshInterest(*connection);
+}
+
 } // namespace irc
