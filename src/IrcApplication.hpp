@@ -1,0 +1,52 @@
+#ifndef IRC_APPLICATION_HPP
+#define IRC_APPLICATION_HPP
+
+#include "ClientRegistry.hpp"
+#include "RuntimeConfig.hpp"
+#include "Server.hpp"
+
+#include <string>
+#include <vector>
+
+class IrcMessage;
+
+class IrcApplication {
+public:
+    IrcApplication(Server& server, const std::string& password, const RuntimeConfig& runtime);
+
+    void onConnect(Connection& connection);
+    void onLine(Connection& connection, const std::string& line);
+    void onDisconnect(Connection& connection, const std::string& reason);
+
+private:
+    Server& _server;
+    std::string _password;
+    RuntimeConfig _runtime;
+    std::string _serverName;
+    ClientRegistry _clients;
+
+    void handleMessage(int fd, const IrcMessage& message);
+
+    void handlePass(int fd, const IrcMessage& message);
+    void handleNick(int fd, const IrcMessage& message);
+    void handleUser(int fd, const IrcMessage& message);
+    void handlePing(int fd, const IrcMessage& message);
+    void handleQuit(int fd, const IrcMessage& message);
+    void maybeRegister(int fd);
+
+    std::string replyTarget(int fd) const;
+    std::string prefixFor(int fd) const;
+    std::string prefixFor(const ClientState& client) const;
+    void sendNumeric(
+        int fd,
+        int numericCode,
+        const std::vector<std::string>& params,
+        const std::string& trailing
+    );
+    void sendNumericRaw(int fd, int numericCode, const std::vector<std::string>& params);
+    void sendRaw(int fd, const std::string& line);
+    void requestClose(int fd, const std::string& reason);
+    void removeClientState(int fd, const std::string& reason, bool notifyPeers);
+};
+
+#endif // IRC_APPLICATION_HPP
