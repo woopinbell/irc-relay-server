@@ -26,10 +26,13 @@ public:
     const ClientState* find(int fd) const;
     bool contains(int fd) const;
     std::vector<int> fds() const;
+    int findFdByNickname(const std::string& nickname) const;
+    void setNickname(int fd, const std::string& nickname);
     void erase(int fd);
 
 private:
     std::map<int, ClientState> _states;
+    std::map<std::string, int> _nicknameIndex;
 };
 
 #endif // IRC_CLIENT_REGISTRY_HPP
