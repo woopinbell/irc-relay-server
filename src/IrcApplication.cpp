@@ -36,3 +36,21 @@ void IrcApplication::onLine(Connection& connection, const std::string& line) {
 void IrcApplication::onDisconnect(Connection& connection, const std::string& reason) {
     removeClientState(connection.fd(), reason, true);
 }
+
+void IrcApplication::handleMessage(int fd, const IrcMessage& message) {
+    if (message.command == "PASS") {
+        handlePass(fd, message);
+    } else if (message.command == "NICK") {
+        handleNick(fd, message);
+    } else if (message.command == "USER") {
+        handleUser(fd, message);
+    } else if (message.command == "PING") {
+        handlePing(fd, message);
+    } else if (message.command == "QUIT") {
+        handleQuit(fd, message);
+    } else if (!_clients.state(fd).registered) {
+        sendNumeric(fd, 451, std::vector<std::string>(), "You have not registered");
+    } else {
+        sendNumeric(fd, 421, std::vector<std::string>(1, message.command), "Unknown command");
+    }
+}
