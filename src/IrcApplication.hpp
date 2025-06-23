@@ -25,6 +25,8 @@ private:
     std::string _serverName;
     ClientRegistry _clients;
 
+    static std::vector<std::string> splitComma(const std::string& value);
+
     void handleMessage(int fd, const IrcMessage& message);
 
     void handlePass(int fd, const IrcMessage& message);
@@ -34,6 +36,9 @@ private:
     void handleQuit(int fd, const IrcMessage& message);
     void maybeRegister(int fd);
 
+    void handlePrivmsg(int fd, const IrcMessage& message);
+
+    int findNick(const std::string& nickname) const;
     std::string replyTarget(int fd) const;
     std::string prefixFor(int fd) const;
     std::string prefixFor(const ClientState& client) const;

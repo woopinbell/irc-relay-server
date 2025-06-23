@@ -50,6 +50,8 @@ void IrcApplication::handleMessage(int fd, const IrcMessage& message) {
         handleQuit(fd, message);
     } else if (!_clients.state(fd).registered) {
         sendNumeric(fd, 451, std::vector<std::string>(), "You have not registered");
+    } else if (message.command == "PRIVMSG") {
+        handlePrivmsg(fd, message);
     } else {
         sendNumeric(fd, 421, std::vector<std::string>(1, message.command), "Unknown command");
     }
