@@ -3,8 +3,22 @@
 #include "Connection.hpp"
 #include "Replies.hpp"
 
+#include <sstream>
 #include <utility>
 #include <vector>
+
+namespace {
+    std::string joinWords(const std::vector<std::string>& values, const std::string& separator) {
+        std::ostringstream out;
+        for (std::size_t i = 0; i < values.size(); ++i) {
+            if (i != 0) {
+                out << separator;
+            }
+            out << values[i];
+        }
+        return out.str();
+    }
+}
 
 std::vector<std::string> IrcApplication::splitComma(const std::string& value) {
     std::vector<std::string> parts;
@@ -46,6 +60,32 @@ Channel* IrcApplication::findChannelForCommand(int fd, const std::string& name, 
         return NULL;
     }
     return &it->second;
+}
+
+void IrcApplication::sendTopicReply(int fd, const Channel& channel) {
+    if (channel.hasTopic()) {
+        sendNumeric(fd, 332, std::vector<std::string>(1, channel.name()), channel.topic());
+    } else {
+        sendNumeric(fd, 331, std::vector<std::string>(1, channel.name()), "No topic is set");
+    }
+}
+
+void IrcApplication::sendNames(int fd, const Channel& channel) {
+    std::vector<std::string> names;
+    const std::vector<int> members = channel.members();
+    for (std::size_t i = 0; i < members.size(); ++i) {
+        const ClientState* client = _clients.find(members[i]);
+        if (client == NULL) {
+            continue;
+        }
+        names.push_back((channel.isOperator(members[i]) ? "@" : "") + client->nick);
+    }
+
+    std::vector<std::string> nameParams;
+    nameParams.push_back("=");
+    nameParams.push_back(channel.name());
+    sendNumeric(fd, 353, nameParams, joinWords(names, " "));
+    sendNumeric(fd, 366, std::vector<std::string>(1, channel.name()), "End of /NAMES list");
 }
 
 int IrcApplication::findNick(const std::string& nickname) const {
