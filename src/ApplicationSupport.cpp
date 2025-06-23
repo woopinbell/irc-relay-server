@@ -3,6 +3,7 @@
 #include "Connection.hpp"
 #include "Replies.hpp"
 
+#include <utility>
 #include <vector>
 
 std::vector<std::string> IrcApplication::splitComma(const std::string& value) {
@@ -20,6 +21,31 @@ std::vector<std::string> IrcApplication::splitComma(const std::string& value) {
         start = comma + 1;
     }
     return parts;
+}
+
+bool IrcApplication::isChannelTarget(const std::string& target) {
+    return !target.empty() && (target[0] == '#' || target[0] == '&');
+}
+
+Channel& IrcApplication::ensureChannel(const std::string& name) {
+    std::map<std::string, Channel>::iterator it = _channels.find(name);
+    if (it == _channels.end()) {
+        it = _channels.insert(std::make_pair(name, Channel(name))).first;
+    }
+    return it->second;
+}
+
+Channel* IrcApplication::findChannelForCommand(int fd, const std::string& name, bool requireMembership) {
+    std::map<std::string, Channel>::iterator it = _channels.find(name);
+    if (it == _channels.end()) {
+        sendNumeric(fd, 403, std::vector<std::string>(1, name), "No such channel");
+        return NULL;
+    }
+    if (requireMembership && !it->second.hasMember(fd)) {
+        sendNumeric(fd, 442, std::vector<std::string>(1, name), "You're not on that channel");
+        return NULL;
+    }
+    return &it->second;
 }
 
 int IrcApplication::findNick(const std::string& nickname) const {
