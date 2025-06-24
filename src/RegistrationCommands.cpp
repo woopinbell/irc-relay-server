@@ -62,7 +62,16 @@ void IrcApplication::handleNick(int fd, const IrcMessage& message) {
         return;
     }
 
+    ClientState& client = _clients.state(fd);
+    const bool wasRegistered = client.registered;
+    const std::string oldPrefix = prefixFor(client);
+
     _clients.setNickname(fd, nextNick);
+
+    if (wasRegistered) {
+        broadcastToCommon(fd, Replies::formatMessage(oldPrefix, "NICK", std::vector<std::string>(1, nextNick)), true);
+    }
+
     maybeRegister(fd);
 }
 

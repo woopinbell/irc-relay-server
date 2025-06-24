@@ -89,6 +89,39 @@ void IrcApplication::sendNames(int fd, const Channel& channel) {
     sendNumeric(fd, 366, std::vector<std::string>(1, channel.name()), "End of /NAMES list");
 }
 
+void IrcApplication::partAllChannels(int fd, const std::string& reason) {
+    std::vector<std::string> channelNames;
+    for (std::map<std::string, Channel>::const_iterator it = _channels.begin(); it != _channels.end(); ++it) {
+        if (it->second.hasMember(fd)) {
+            channelNames.push_back(it->first);
+        }
+    }
+    for (std::size_t i = 0; i < channelNames.size(); ++i) {
+        partChannel(fd, channelNames[i], reason);
+    }
+}
+
+void IrcApplication::partChannel(int fd, const std::string& channelName, const std::string& reason) {
+    std::map<std::string, Channel>::iterator it = _channels.find(channelName);
+    if (it == _channels.end()) {
+        sendNumeric(fd, 403, std::vector<std::string>(1, channelName), "No such channel");
+        return;
+    }
+    if (!it->second.hasMember(fd)) {
+        sendNumeric(fd, 442, std::vector<std::string>(1, channelName), "You're not on that channel");
+        return;
+    }
+
+    std::vector<std::string> params;
+    params.push_back(channelName);
+    if (!reason.empty()) {
+        params.push_back(reason);
+    }
+    broadcastToChannel(channelName, Replies::formatMessage(prefixFor(fd), "PART", params), -1);
+    it->second.removeMember(fd);
+    eraseChannelIfEmpty(channelName);
+}
+
 void IrcApplication::broadcastMode(int fd, const Channel& channel, const std::string& mode, const std::string& arg) {
     std::vector<std::string> params;
     params.push_back(channel.name());
@@ -127,6 +160,13 @@ void IrcApplication::broadcastToCommon(int fd, const std::string& line, bool inc
     }
     for (std::set<int>::const_iterator it = targets.begin(); it != targets.end(); ++it) {
         sendRaw(*it, line);
+    }
+}
+
+void IrcApplication::eraseChannelIfEmpty(const std::string& channelName) {
+    std::map<std::string, Channel>::iterator it = _channels.find(channelName);
+    if (it != _channels.end() && it->second.empty()) {
+        _channels.erase(it);
     }
 }
 
@@ -179,6 +219,44 @@ void IrcApplication::requestClose(int fd, const std::string& reason) {
     }
 }
 
-void IrcApplication::removeClientState(int fd, const std::string&, bool) {
+void IrcApplication::removeClientState(int fd, const std::string& reason, bool notifyPeers) {
+    const ClientState* found = _clients.find(fd);
+    if (found == NULL) {
+        return;
+    }
+
+    const ClientState client = *found;
+    if (notifyPeers && client.registered && !client.nick.empty()) {
+        std::set<int> peers;
+        for (std::map<std::string, Channel>::const_iterator channelIt = _channels.begin(); channelIt != _channels.end(); ++channelIt) {
+            if (!channelIt->second.hasMember(fd)) {
+                continue;
+            }
+            const std::vector<int> members = channelIt->second.members();
+            for (std::size_t i = 0; i < members.size(); ++i) {
+                if (members[i] != fd) {
+                    peers.insert(members[i]);
+                }
+            }
+        }
+        const std::string quitLine = Replies::formatMessage(prefixFor(client), "QUIT", std::vector<std::string>(1, reason));
+        for (std::set<int>::const_iterator peer = peers.begin(); peer != peers.end(); ++peer) {
+            sendRaw(*peer, quitLine);
+        }
+    }
+
+    std::vector<std::string> emptyChannels;
+    for (std::map<std::string, Channel>::iterator channelIt = _channels.begin(); channelIt != _channels.end(); ++channelIt) {
+        if (channelIt->second.hasMember(fd)) {
+            channelIt->second.removeMember(fd);
+            if (channelIt->second.empty()) {
+                emptyChannels.push_back(channelIt->first);
+            }
+        }
+    }
+    for (std::size_t i = 0; i < emptyChannels.size(); ++i) {
+        _channels.erase(emptyChannels[i]);
+    }
+
     _clients.erase(fd);
 }
