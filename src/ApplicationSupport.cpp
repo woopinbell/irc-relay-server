@@ -3,6 +3,7 @@
 #include "Connection.hpp"
 #include "Replies.hpp"
 
+#include <set>
 #include <sstream>
 #include <utility>
 #include <vector>
@@ -86,6 +87,47 @@ void IrcApplication::sendNames(int fd, const Channel& channel) {
     nameParams.push_back(channel.name());
     sendNumeric(fd, 353, nameParams, joinWords(names, " "));
     sendNumeric(fd, 366, std::vector<std::string>(1, channel.name()), "End of /NAMES list");
+}
+
+void IrcApplication::broadcastMode(int fd, const Channel& channel, const std::string& mode, const std::string& arg) {
+    std::vector<std::string> params;
+    params.push_back(channel.name());
+    params.push_back(mode);
+    if (!arg.empty()) {
+        params.push_back(arg);
+    }
+    broadcastToChannel(channel.name(), Replies::formatMessage(prefixFor(fd), "MODE", params), -1);
+}
+
+void IrcApplication::broadcastToChannel(const std::string& channelName, const std::string& line, int exceptFd) {
+    std::map<std::string, Channel>::const_iterator channelIt = _channels.find(channelName);
+    if (channelIt == _channels.end()) {
+        return;
+    }
+
+    const std::vector<int> members = channelIt->second.members();
+    for (std::size_t i = 0; i < members.size(); ++i) {
+        if (members[i] != exceptFd) {
+            sendRaw(members[i], line);
+        }
+    }
+}
+
+void IrcApplication::broadcastToCommon(int fd, const std::string& line, bool includeSelf) {
+    std::set<int> targets;
+    for (std::map<std::string, Channel>::const_iterator it = _channels.begin(); it != _channels.end(); ++it) {
+        if (!it->second.hasMember(fd)) {
+            continue;
+        }
+        const std::vector<int> members = it->second.members();
+        targets.insert(members.begin(), members.end());
+    }
+    if (!includeSelf) {
+        targets.erase(fd);
+    }
+    for (std::set<int>::const_iterator it = targets.begin(); it != targets.end(); ++it) {
+        sendRaw(*it, line);
+    }
 }
 
 int IrcApplication::findNick(const std::string& nickname) const {
