@@ -56,6 +56,8 @@ void IrcApplication::handleMessage(int fd, const IrcMessage& message) {
         handleJoin(fd, message);
     } else if (message.command == "PART") {
         handlePart(fd, message);
+    } else if (message.command == "TOPIC") {
+        handleTopic(fd, message);
     } else {
         sendNumeric(fd, 421, std::vector<std::string>(1, message.command), "Unknown command");
     }
