@@ -52,6 +52,8 @@ void IrcApplication::handleMessage(int fd, const IrcMessage& message) {
         sendNumeric(fd, 451, std::vector<std::string>(), "You have not registered");
     } else if (message.command == "PRIVMSG") {
         handlePrivmsg(fd, message);
+    } else if (message.command == "JOIN") {
+        handleJoin(fd, message);
     } else {
         sendNumeric(fd, 421, std::vector<std::string>(1, message.command), "Unknown command");
     }

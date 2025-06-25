@@ -17,7 +17,7 @@ $(error Unsupported OS for IRC event backend: $(UNAME_S))
 endif
 
 SRCS := src/main.cpp src/IrcApplication.cpp src/RegistrationCommands.cpp src/MessagingCommands.cpp \
-	src/ApplicationSupport.cpp src/ClientRegistry.cpp src/RuntimeConfig.cpp \
+	src/ChannelCommands.cpp src/ApplicationSupport.cpp src/ClientRegistry.cpp src/RuntimeConfig.cpp \
 	src/IrcMessage.cpp src/Channel.cpp src/Replies.cpp \
 	src/Connection.cpp src/Server.cpp $(EVENT_SRC)
 OBJS := $(SRCS:.cpp=.o)
