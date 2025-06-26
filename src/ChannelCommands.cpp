@@ -168,3 +168,78 @@ void IrcApplication::handleInvite(int fd, const IrcMessage& message) {
     inviteParams.push_back(channel->name());
     sendRaw(targetFd, Replies::formatMessage(prefixFor(fd), "INVITE", inviteParams));
 }
+
+void IrcApplication::handleMode(int fd, const IrcMessage& message) {
+    if (message.params.empty()) {
+        sendNumeric(fd, 461, std::vector<std::string>(1, "MODE"), "Not enough parameters");
+        return;
+    }
+
+    const std::string target = message.params[0];
+    if (isChannelTarget(target)) {
+        handleChannelMode(fd, message);
+        return;
+    }
+
+    const int targetFd = findNick(target);
+    if (targetFd == -1) {
+        sendNumeric(fd, 401, std::vector<std::string>(1, target), "No such nick/channel");
+        return;
+    }
+    if (message.params.size() == 1) {
+        sendNumericRaw(fd, 221, std::vector<std::string>(1, "+"));
+        return;
+    }
+    if (targetFd != fd) {
+        sendNumeric(fd, 502, std::vector<std::string>(), "Cannot change mode for other users");
+        return;
+    }
+    sendNumeric(fd, 501, std::vector<std::string>(), "User modes are not implemented");
+}
+
+void IrcApplication::handleChannelMode(int fd, const IrcMessage& message) {
+    Channel* channel = findChannelForCommand(fd, message.params[0], false);
+    if (!channel) {
+        return;
+    }
+
+    if (message.params.size() == 1) {
+        std::vector<std::string> params;
+        params.push_back(channel->name());
+        params.push_back(channel->modeString());
+        sendNumericRaw(fd, 324, params);
+        return;
+    }
+    if (!channel->hasMember(fd)) {
+        sendNumeric(fd, 442, std::vector<std::string>(1, channel->name()), "You're not on that channel");
+        return;
+    }
+    if (!channel->isOperator(fd)) {
+        sendNumeric(fd, 482, std::vector<std::string>(1, channel->name()), "You're not channel operator");
+        return;
+    }
+
+    bool adding = true;
+    const std::string modes = message.params[1];
+    for (std::size_t i = 0; i < modes.size(); ++i) {
+        const char mode = modes[i];
+        if (mode == '+') {
+            adding = true;
+            continue;
+        }
+        if (mode == '-') {
+            adding = false;
+            continue;
+        }
+
+        if (mode == 'i') {
+            channel->setInviteOnly(adding);
+            broadcastMode(fd, *channel, std::string(adding ? "+" : "-") + "i", "");
+        } else if (mode == 't') {
+            channel->setTopicProtected(adding);
+            broadcastMode(fd, *channel, std::string(adding ? "+" : "-") + "t", "");
+        } else {
+            sendNumeric(fd, 472, std::vector<std::string>(1, std::string(1, mode)), "is unknown mode char to me");
+        }
+    }
+}
