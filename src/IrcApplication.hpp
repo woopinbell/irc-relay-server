@@ -46,6 +46,7 @@ private:
     void handlePart(int fd, const IrcMessage& message);
     void handleTopic(int fd, const IrcMessage& message);
     void handleKick(int fd, const IrcMessage& message);
+    void handleInvite(int fd, const IrcMessage& message);
 
     Channel& ensureChannel(const std::string& name);
     Channel* findChannelForCommand(int fd, const std::string& name, bool requireMembership);
