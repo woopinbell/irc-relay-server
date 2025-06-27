@@ -217,6 +217,25 @@ void IrcApplication::handleList(int fd, const IrcMessage& message) {
     sendNumeric(fd, 323, std::vector<std::string>(), "End of /LIST");
 }
 
+void IrcApplication::handleNames(int fd, const IrcMessage& message) {
+    if (message.params.empty()) {
+        for (std::map<std::string, Channel>::const_iterator it = _channels.begin(); it != _channels.end(); ++it) {
+            sendNames(fd, it->second);
+        }
+        return;
+    }
+
+    const std::vector<std::string> names = splitComma(message.params[0]);
+    for (std::size_t i = 0; i < names.size(); ++i) {
+        std::map<std::string, Channel>::const_iterator found = _channels.find(names[i]);
+        if (found != _channels.end()) {
+            sendNames(fd, found->second);
+        } else {
+            sendNumeric(fd, 366, std::vector<std::string>(1, names[i]), "End of /NAMES list");
+        }
+    }
+}
+
 void IrcApplication::handleChannelMode(int fd, const IrcMessage& message) {
     Channel* channel = findChannelForCommand(fd, message.params[0], false);
     if (!channel) {
