@@ -197,6 +197,26 @@ void IrcApplication::handleMode(int fd, const IrcMessage& message) {
     sendNumeric(fd, 501, std::vector<std::string>(), "User modes are not implemented");
 }
 
+void IrcApplication::handleList(int fd, const IrcMessage& message) {
+    std::set<std::string> requested;
+    if (!message.params.empty()) {
+        const std::vector<std::string> names = splitComma(message.params[0]);
+        requested.insert(names.begin(), names.end());
+    }
+
+    sendNumericRaw(fd, 321, std::vector<std::string>{"Channel", "Users", "Name"});
+    for (std::map<std::string, Channel>::const_iterator it = _channels.begin(); it != _channels.end(); ++it) {
+        if (!requested.empty() && requested.find(it->first) == requested.end()) {
+            continue;
+        }
+        std::vector<std::string> params;
+        params.push_back(it->first);
+        params.push_back(std::to_string(it->second.memberCount()));
+        sendNumeric(fd, 322, params, it->second.hasTopic() ? it->second.topic() : "open room");
+    }
+    sendNumeric(fd, 323, std::vector<std::string>(), "End of /LIST");
+}
+
 void IrcApplication::handleChannelMode(int fd, const IrcMessage& message) {
     Channel* channel = findChannelForCommand(fd, message.params[0], false);
     if (!channel) {

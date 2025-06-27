@@ -4,13 +4,15 @@
 #include <cctype>
 
 Channel::Channel()
-    : _inviteOnly(false),
+    : _createdAt(std::time(NULL)),
+      _inviteOnly(false),
       _topicProtected(true),
       _hasTopic(false) {
 }
 
 Channel::Channel(const std::string& channelName)
     : _name(channelName),
+      _createdAt(std::time(NULL)),
       _inviteOnly(false),
       _topicProtected(true),
       _hasTopic(false) {
@@ -22,6 +24,14 @@ const std::string& Channel::name() const {
 
 bool Channel::empty() const {
     return _members.empty();
+}
+
+std::size_t Channel::memberCount() const {
+    return _members.size();
+}
+
+std::time_t Channel::createdAt() const {
+    return _createdAt;
 }
 
 bool Channel::hasMember(int clientId) const {
