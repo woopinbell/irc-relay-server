@@ -23,7 +23,7 @@ SRCS := src/main.cpp src/IrcApplication.cpp src/RegistrationCommands.cpp src/Mes
 OBJS := $(SRCS:.cpp=.o)
 DEPS := $(OBJS:.o=.d)
 
-.PHONY: all clean fclean re
+.PHONY: all clean fclean re test smoke
 
 all: $(NAME)
 
@@ -32,6 +32,11 @@ $(NAME): $(OBJS)
 
 %.o: %.cpp
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -MMD -MP -c $< -o $@
+
+test: all
+	bash tests/irc_smoke.sh
+
+smoke: test
 
 clean:
 	rm -f $(OBJS) $(DEPS)
