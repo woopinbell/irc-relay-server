@@ -102,6 +102,12 @@ void IrcApplication::handlePing(int fd, const IrcMessage& message) {
     sendRaw(fd, Replies::formatMessage(_serverName, "PONG", params));
 }
 
+void IrcApplication::handlePong(int fd, const IrcMessage&) {
+    ClientState& client = _clients.state(fd);
+    client.awaitingPong = false;
+    client.lastPingAt = 0;
+}
+
 void IrcApplication::handleQuit(int fd, const IrcMessage& message) {
     const std::string reason = message.params.empty() ? "Client Quit" : message.params[0];
     requestClose(fd, reason);

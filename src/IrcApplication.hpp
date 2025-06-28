@@ -40,6 +40,7 @@ private:
     void handleNick(int fd, const IrcMessage& message);
     void handleUser(int fd, const IrcMessage& message);
     void handlePing(int fd, const IrcMessage& message);
+    void handlePong(int fd, const IrcMessage& message);
     void handleQuit(int fd, const IrcMessage& message);
     void maybeRegister(int fd);
 

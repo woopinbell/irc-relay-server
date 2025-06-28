@@ -12,11 +12,14 @@ struct ClientState {
     bool hasNick;
     bool hasUser;
     bool registered;
+    bool awaitingPong;
     std::string nick;
     std::string user;
     std::string realname;
     std::string host;
     std::time_t connectedAt;
+    std::time_t lastActivityAt;
+    std::time_t lastPingAt;
 
     ClientState();
 };

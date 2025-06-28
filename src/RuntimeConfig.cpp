@@ -14,7 +14,8 @@ RuntimeConfig::RuntimeConfig()
 
 void RuntimeConfig::printUsage(const char* programName) {
     std::cerr << "Usage: " << programName << " <port> <password> "
-              << "[--registration-timeout=N]" << std::endl;
+              << "[--idle-timeout=N] [--ping-timeout=N] [--registration-timeout=N]"
+              << std::endl;
 }
 
 int RuntimeConfig::parsePort(const char* value) {
@@ -31,7 +32,11 @@ RuntimeConfig RuntimeConfig::parseOptions(int argc, char** argv, Server::Config&
     RuntimeConfig runtime;
     for (int i = 3; i < argc; ++i) {
         const std::string arg(argv[i]);
-        if (startsWith(arg, "--registration-timeout=")) {
+        if (startsWith(arg, "--idle-timeout=")) {
+            runtime.idleTimeoutSeconds = parsePositiveInt(arg.substr(15), "idle timeout");
+        } else if (startsWith(arg, "--ping-timeout=")) {
+            runtime.pingTimeoutSeconds = parsePositiveInt(arg.substr(15), "ping timeout");
+        } else if (startsWith(arg, "--registration-timeout=")) {
             runtime.registrationTimeoutSeconds = parsePositiveInt(arg.substr(23), "registration timeout");
         } else {
             throw std::runtime_error("unknown option: " + arg);

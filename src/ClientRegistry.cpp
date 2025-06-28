@@ -8,8 +8,11 @@ ClientState::ClientState()
       hasNick(false),
       hasUser(false),
       registered(false),
+      awaitingPong(false),
       host("localhost"),
-      connectedAt(0) {
+      connectedAt(0),
+      lastActivityAt(0),
+      lastPingAt(0) {
 }
 
 ClientState& ClientRegistry::state(int fd) {
