@@ -101,6 +101,12 @@ def main() -> int:
         alice.expect(" JOIN #edu")
         alice.expect(" 353 ")
         alice.expect(" 366 ")
+        alice.send_line("LIST #edu")
+        alice.expect(" 322 ")
+        alice.expect(" 323 ")
+        alice.send_line("NAMES #edu")
+        alice.expect(" 353 ")
+        alice.expect(" 366 ")
 
         bob = register(host, port, password, "bob", "Bob Learner")
         carol = register(host, port, password, "carol", "Carol Learner")
