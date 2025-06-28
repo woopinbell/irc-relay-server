@@ -8,7 +8,8 @@ ClientState::ClientState()
       hasNick(false),
       hasUser(false),
       registered(false),
-      host("localhost") {
+      host("localhost"),
+      connectedAt(0) {
 }
 
 ClientState& ClientRegistry::state(int fd) {

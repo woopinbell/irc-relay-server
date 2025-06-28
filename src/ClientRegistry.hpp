@@ -1,6 +1,7 @@
 #ifndef IRC_CLIENT_REGISTRY_HPP
 #define IRC_CLIENT_REGISTRY_HPP
 
+#include <ctime>
 #include <map>
 #include <string>
 #include <vector>
@@ -15,6 +16,7 @@ struct ClientState {
     std::string user;
     std::string realname;
     std::string host;
+    std::time_t connectedAt;
 
     ClientState();
 };

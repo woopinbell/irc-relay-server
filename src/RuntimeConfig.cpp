@@ -13,7 +13,8 @@ RuntimeConfig::RuntimeConfig()
 }
 
 void RuntimeConfig::printUsage(const char* programName) {
-    std::cerr << "Usage: " << programName << " <port> <password>" << std::endl;
+    std::cerr << "Usage: " << programName << " <port> <password> "
+              << "[--registration-timeout=N]" << std::endl;
 }
 
 int RuntimeConfig::parsePort(const char* value) {
@@ -27,8 +28,27 @@ int RuntimeConfig::parsePort(const char* value) {
 
 RuntimeConfig RuntimeConfig::parseOptions(int argc, char** argv, Server::Config& serverConfig) {
     (void)serverConfig;
-    if (argc > 3) {
-        throw std::runtime_error(std::string("unknown option: ") + argv[3]);
+    RuntimeConfig runtime;
+    for (int i = 3; i < argc; ++i) {
+        const std::string arg(argv[i]);
+        if (startsWith(arg, "--registration-timeout=")) {
+            runtime.registrationTimeoutSeconds = parsePositiveInt(arg.substr(23), "registration timeout");
+        } else {
+            throw std::runtime_error("unknown option: " + arg);
+        }
     }
-    return RuntimeConfig();
+    return runtime;
+}
+
+int RuntimeConfig::parsePositiveInt(const std::string& value, const std::string& name) {
+    char* end = NULL;
+    const long parsed = std::strtol(value.c_str(), &end, 10);
+    if (value.empty() || *end != '\0' || parsed <= 0 || parsed > 86400) {
+        throw std::runtime_error(name + " must be a positive integer");
+    }
+    return static_cast<int>(parsed);
+}
+
+bool RuntimeConfig::startsWith(const std::string& value, const std::string& prefix) {
+    return value.size() >= prefix.size() && value.compare(0, prefix.size(), prefix) == 0;
 }

@@ -6,6 +6,7 @@
 #include "RuntimeConfig.hpp"
 #include "Server.hpp"
 
+#include <ctime>
 #include <map>
 #include <string>
 #include <vector>
@@ -19,6 +20,7 @@ public:
     void onConnect(Connection& connection);
     void onLine(Connection& connection, const std::string& line);
     void onDisconnect(Connection& connection, const std::string& reason);
+    void onTick();
 
 private:
     Server& _server;
@@ -32,6 +34,7 @@ private:
     static bool isChannelTarget(const std::string& target);
 
     void handleMessage(int fd, const IrcMessage& message);
+    void maintainClient(int fd, std::time_t now);
 
     void handlePass(int fd, const IrcMessage& message);
     void handleNick(int fd, const IrcMessage& message);
