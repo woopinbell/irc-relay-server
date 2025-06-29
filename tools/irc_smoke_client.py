@@ -163,6 +163,12 @@ def main() -> int:
         alice.send_line("PRIVMSG bob :direct hello")
         bob.expect(" PRIVMSG bob :direct hello")
 
+        idle = register(host, port, password, "idle", "Idle Tester")
+        peers.append(idle)
+        idle.expect(" PING ", timeout=5.0)
+        idle.send_line("PING :still-alive")
+        idle.expect(" PONG ")
+
         alice.send_line("QUIT :smoke complete")
         time.sleep(0.05)
         return 0

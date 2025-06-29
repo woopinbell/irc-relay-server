@@ -24,7 +24,7 @@ cleanup() {
 trap cleanup EXIT
 
 make -C "${ROOT}" >/dev/null
-"${ROOT}/irc-relay-server" "${PORT}" "${PASSWORD}" >"${LOG_FILE}" 2>&1 &
+"${ROOT}/irc-relay-server" "${PORT}" "${PASSWORD}" --idle-timeout=1 --ping-timeout=2 --registration-timeout=5 >"${LOG_FILE}" 2>&1 &
 SERVER_PID="$!"
 
 python3 - <<PY
