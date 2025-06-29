@@ -29,6 +29,8 @@ class IrcPeer:
                 chunk = self.sock.recv(4096)
             except socket.timeout:
                 break
+            except OSError:
+                break
             if not chunk:
                 break
             self.buffer += chunk
@@ -168,6 +170,12 @@ def main() -> int:
         idle.expect(" PING ", timeout=5.0)
         idle.send_line("PING :still-alive")
         idle.expect(" PONG ")
+
+        flood = register(host, port, password, "flood", "Flood Tester")
+        for index in range(25):
+            flood.send_line(f"PING :burst-{index}")
+        flood.expect(" 439 ")
+        flood.close()
 
         alice.send_line("QUIT :smoke complete")
         time.sleep(0.05)
