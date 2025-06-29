@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Small IRC smoke client for the educational reference server."""
+"""Small IRC smoke client for irc-relay-server."""
 
 import socket
 import sys
@@ -8,8 +8,9 @@ from typing import List
 
 
 class IrcPeer:
-    def __init__(self, host: str, port: int, label: str):
+    def __init__(self, host: str, port: int, label: str, auto_pong: bool = True):
         self.label = label
+        self.auto_pong = auto_pong
         self.sock = socket.create_connection((host, port), timeout=3.0)
         self.sock.settimeout(0.2)
         self.buffer = b""
@@ -35,6 +36,7 @@ class IrcPeer:
                 raw, self.buffer = self.buffer.split(b"\n", 1)
                 line = raw.rstrip(b"\r").decode("utf-8", "replace")
                 self.lines.append(line)
+                self._auto_reply_to_ping(line)
         return list(self.lines)
 
     def expect(self, needle: str, timeout: float = 2.0) -> str:
@@ -52,6 +54,19 @@ class IrcPeer:
             self.sock.close()
         except OSError:
             pass
+
+    def _auto_reply_to_ping(self, line: str) -> None:
+        if not self.auto_pong:
+            return
+        token = None
+        if " PING " in line:
+            token = line.split(" PING ", 1)[1]
+        elif line.startswith("PING "):
+            token = line.split(" ", 1)[1]
+        if token is None:
+            return
+        token = token.lstrip(":")
+        self.send_line(f"PONG :{token}")
 
 
 def register(host: str, port: int, password: str, nick: str, realname: str) -> IrcPeer:
