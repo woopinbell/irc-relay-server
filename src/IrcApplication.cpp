@@ -37,6 +37,9 @@ void IrcApplication::onLine(Connection& connection, const std::string& line) {
         sendNumeric(fd, 417, std::vector<std::string>(), parseError);
         return;
     }
+    if (!recordCommand(fd, std::time(NULL))) {
+        return;
+    }
     handleMessage(fd, message);
 }
 
@@ -118,4 +121,19 @@ void IrcApplication::maintainClient(int fd, std::time_t now) {
         client.awaitingPong = true;
         client.lastPingAt = now;
     }
+}
+
+bool IrcApplication::recordCommand(int fd, std::time_t now) {
+    ClientState& client = _clients.state(fd);
+    while (!client.commandWindow.empty() &&
+           now - client.commandWindow.front() >= _runtime.rateLimitWindowSeconds) {
+        client.commandWindow.pop_front();
+    }
+    client.commandWindow.push_back(now);
+    if (_runtime.rateLimitCount != 0 && client.commandWindow.size() > _runtime.rateLimitCount) {
+        sendNumeric(fd, 439, std::vector<std::string>(), "Command rate limit exceeded");
+        requestClose(fd, "command rate limit exceeded");
+        return false;
+    }
+    return true;
 }
