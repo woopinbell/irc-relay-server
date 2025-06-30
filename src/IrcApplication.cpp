@@ -10,7 +10,7 @@ IrcApplication::IrcApplication(Server& server, const std::string& password, cons
     : _server(server),
       _password(password),
       _runtime(runtime),
-      _serverName("irc.reference.local") {
+      _serverName("irc.relay.local") {
 }
 
 void IrcApplication::onConnect(Connection& connection) {
