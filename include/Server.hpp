@@ -22,6 +22,7 @@ public:
         int eventTimeoutMs = 1000;
         std::size_t maxLineLength = 512;
         std::size_t maxPendingBytes = 1048576;
+        std::size_t maxConnections = 256;
     };
 
     using ConnectHandler = std::function<void(Connection&)>;
@@ -73,6 +74,7 @@ private:
 
     void createListenSocket();
     void acceptReadyClients();
+    void rejectReadyClient();
     void handleClientEvent(const Event& event);
     void refreshInterest(Connection& connection);
     void closeListenSocket() noexcept;

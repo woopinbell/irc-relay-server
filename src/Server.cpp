@@ -341,6 +341,12 @@ void Server::acceptReadyClients()
             return;
         }
 
+        if (config_.maxConnections != 0 && connections_.size() >= config_.maxConnections) {
+            rejectReadyClient();
+            ::close(clientFd);
+            continue;
+        }
+
         try {
             setCloseOnExec(clientFd);
             setNonBlocking(clientFd);
@@ -376,6 +382,11 @@ void Server::acceptReadyClients()
             reportError(exception.what());
         }
     }
+}
+
+void Server::rejectReadyClient()
+{
+    reportError("connection rejected: max connection count reached");
 }
 
 void Server::handleClientEvent(const Event& event)
