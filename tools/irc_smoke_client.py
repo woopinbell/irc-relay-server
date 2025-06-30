@@ -177,6 +177,9 @@ def main() -> int:
         flood.expect(" 439 ")
         flood.close()
 
+        alice.send_line("METRICS")
+        alice.expect(" NOTICE alice :connections=")
+
         alice.send_line("QUIT :smoke complete")
         time.sleep(0.05)
         return 0
