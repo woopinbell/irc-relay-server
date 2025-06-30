@@ -208,9 +208,9 @@ bool Server::sendTo(int fd, const std::string& line)
     if (connection == NULL) {
         return false;
     }
-    connection->queueLine(line);
+    const bool queued = connection->queueLine(line);
     refreshInterest(*connection);
-    return true;
+    return queued;
 }
 
 bool Server::queueRawTo(int fd, const std::string& bytes)
@@ -219,9 +219,9 @@ bool Server::queueRawTo(int fd, const std::string& bytes)
     if (connection == NULL) {
         return false;
     }
-    connection->queueRaw(bytes);
+    const bool queued = connection->queueRaw(bytes);
     refreshInterest(*connection);
-    return true;
+    return queued;
 }
 
 void Server::disconnect(int fd, const std::string& reason)
@@ -349,7 +349,8 @@ void Server::acceptReadyClients()
             std::unique_ptr<Connection> connection(new Connection(
                 clientFd,
                 formatPeerAddress(peerStorage),
-                config_.maxLineLength));
+                config_.maxLineLength,
+                config_.maxPendingBytes));
             clientFd = -1;
 
             const int fd = connection->fd();
