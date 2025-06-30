@@ -6,12 +6,21 @@
 #include "RuntimeConfig.hpp"
 #include "Server.hpp"
 
+#include <cstddef>
 #include <ctime>
 #include <map>
 #include <string>
 #include <vector>
 
 class IrcMessage;
+
+struct AppMetrics {
+    std::size_t commandsHandled;
+    std::size_t messagesRelayed;
+    std::size_t rateLimitedClients;
+
+    AppMetrics();
+};
 
 class IrcApplication {
 public:
@@ -29,6 +38,7 @@ private:
     std::string _serverName;
     ClientRegistry _clients;
     std::map<std::string, Channel> _channels;
+    AppMetrics _metrics;
 
     static std::vector<std::string> splitComma(const std::string& value);
     static bool isChannelTarget(const std::string& target);
@@ -57,6 +67,7 @@ private:
     void handleNames(int fd, const IrcMessage& message);
     void handleChannelMode(int fd, const IrcMessage& message);
 
+    void handleMetrics(int fd);
     Channel& ensureChannel(const std::string& name);
     Channel* findChannelForCommand(int fd, const std::string& name, bool requireMembership);
     void sendTopicReply(int fd, const Channel& channel);

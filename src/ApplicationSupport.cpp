@@ -8,6 +8,12 @@
 #include <utility>
 #include <vector>
 
+AppMetrics::AppMetrics()
+    : commandsHandled(0),
+      messagesRelayed(0),
+      rateLimitedClients(0) {
+}
+
 namespace {
     std::string joinWords(const std::vector<std::string>& values, const std::string& separator) {
         std::ostringstream out;
@@ -40,6 +46,23 @@ std::vector<std::string> IrcApplication::splitComma(const std::string& value) {
 
 bool IrcApplication::isChannelTarget(const std::string& target) {
     return !target.empty() && (target[0] == '#' || target[0] == '&');
+}
+
+void IrcApplication::handleMetrics(int fd) {
+    const Server::Metrics& serverMetrics = _server.metrics();
+    std::ostringstream out;
+    out << "connections=" << _server.connectionCount()
+        << " accepted=" << serverMetrics.acceptedConnections
+        << " closed=" << serverMetrics.closedConnections
+        << " rooms=" << _channels.size()
+        << " commands=" << _metrics.commandsHandled
+        << " messages=" << _metrics.messagesRelayed
+        << " queue_drops=" << serverMetrics.outboundQueueDrops
+        << " rate_limited=" << _metrics.rateLimitedClients;
+    std::vector<std::string> params;
+    params.push_back(replyTarget(fd));
+    params.push_back(out.str());
+    sendRaw(fd, Replies::formatMessage(_serverName, "NOTICE", params));
 }
 
 Channel& IrcApplication::ensureChannel(const std::string& name) {

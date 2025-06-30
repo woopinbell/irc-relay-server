@@ -28,6 +28,7 @@ void IrcApplication::handlePrivmsg(int fd, const IrcMessage& message) {
             params.push_back(target);
             params.push_back(message.params[1]);
             broadcastToChannel(target, Replies::formatMessage(prefixFor(fd), "PRIVMSG", params), fd);
+            ++_metrics.messagesRelayed;
         } else {
             const int targetFd = findNick(target);
             if (targetFd == -1) {
@@ -38,6 +39,7 @@ void IrcApplication::handlePrivmsg(int fd, const IrcMessage& message) {
             params.push_back(target);
             params.push_back(message.params[1]);
             sendRaw(targetFd, Replies::formatMessage(prefixFor(fd), "PRIVMSG", params));
+            ++_metrics.messagesRelayed;
         }
     }
 }

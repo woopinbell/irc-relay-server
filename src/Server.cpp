@@ -182,6 +182,11 @@ std::size_t Server::connectionCount() const noexcept
     return connections_.size();
 }
 
+const Server::Metrics& Server::metrics() const noexcept
+{
+    return metrics_;
+}
+
 void Server::setConnectHandler(ConnectHandler handler)
 {
     onConnect_ = std::move(handler);
@@ -209,6 +214,9 @@ bool Server::sendTo(int fd, const std::string& line)
         return false;
     }
     const bool queued = connection->queueLine(line);
+    if (!queued) {
+        ++metrics_.outboundQueueDrops;
+    }
     refreshInterest(*connection);
     return queued;
 }
@@ -220,6 +228,9 @@ bool Server::queueRawTo(int fd, const std::string& bytes)
         return false;
     }
     const bool queued = connection->queueRaw(bytes);
+    if (!queued) {
+        ++metrics_.outboundQueueDrops;
+    }
     refreshInterest(*connection);
     return queued;
 }
@@ -241,6 +252,7 @@ void Server::disconnect(int fd, const std::string& reason)
 
     std::unique_ptr<Connection> connection = std::move(found->second);
     connections_.erase(found);
+    ++metrics_.closedConnections;
 
     if (onDisconnect_) {
         try {
@@ -363,6 +375,7 @@ void Server::acceptReadyClients()
             eventManager_->addFd(fd, EventInterest::Read);
             Connection* connectionPtr = connection.get();
             connections_[fd] = std::move(connection);
+            ++metrics_.acceptedConnections;
 
             if (onConnect_) {
                 try {
@@ -415,6 +428,7 @@ void Server::handleClientEvent(const Event& event)
         for (std::vector<std::string>::const_iterator line = readResult.lines.begin();
              line != readResult.lines.end();
              ++line) {
+            ++metrics_.linesReceived;
             if (onLine_) {
                 try {
                     onLine_(*connection, *line);

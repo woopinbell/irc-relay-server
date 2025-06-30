@@ -25,6 +25,13 @@ public:
         std::size_t maxConnections = 256;
     };
 
+    struct Metrics {
+        std::size_t acceptedConnections = 0;
+        std::size_t closedConnections = 0;
+        std::size_t linesReceived = 0;
+        std::size_t outboundQueueDrops = 0;
+    };
+
     using ConnectHandler = std::function<void(Connection&)>;
     using LineHandler = std::function<void(Connection&, const std::string&)>;
     using DisconnectHandler = std::function<void(Connection&, const std::string&)>;
@@ -46,6 +53,7 @@ public:
     int listenFd() const noexcept;
     std::uint16_t port() const noexcept;
     std::size_t connectionCount() const noexcept;
+    const Metrics& metrics() const noexcept;
 
     void setConnectHandler(ConnectHandler handler);
     void setLineHandler(LineHandler handler);
@@ -66,6 +74,7 @@ private:
     std::unordered_map<int, std::unique_ptr<Connection> > connections_;
     bool running_;
     bool stopRequested_;
+    Metrics metrics_;
 
     ConnectHandler onConnect_;
     LineHandler onLine_;
