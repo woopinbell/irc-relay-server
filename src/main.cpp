@@ -14,13 +14,9 @@
 
 namespace {
     volatile std::sig_atomic_t gRunning = 1;
-    Server* gServer = NULL;
 
     void handleSignal(int) {
         gRunning = 0;
-        if (gServer != NULL) {
-            gServer->stop();
-        }
     }
 }
 
@@ -41,8 +37,6 @@ int main(int argc, char** argv) {
 
         std::unique_ptr<IrcApplication> app;
         Server server(config);
-
-        gServer = &server;
 
         app.reset(new IrcApplication(server, argv[2], runtime));
         server.setConnectHandler([&app](Connection& connection) {
@@ -69,13 +63,15 @@ int main(int argc, char** argv) {
             server.pollOnce();
             app->onTick();
         }
-        app->logMetrics();
+        app->shutdown("Server shutting down");
+        for (int i = 0; i < 8 && server.connectionCount() > 0; ++i) {
+            server.pollOnce(50);
+        }
         server.setConnectHandler(Server::ConnectHandler());
         server.setLineHandler(Server::LineHandler());
         server.setDisconnectHandler(Server::DisconnectHandler());
         server.setErrorHandler(Server::ErrorHandler());
         server.stop();
-        gServer = NULL;
     } catch (const std::exception& error) {
         std::cerr << "irc-relay-server: " << error.what();
         if (errno != 0) {

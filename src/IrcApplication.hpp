@@ -39,6 +39,7 @@ public:
     void onLine(Connection& connection, const std::string& line);
     void onDisconnect(Connection& connection, const std::string& reason);
     void onTick();
+    void shutdown(const std::string& reason);
     void logMetrics() const;
 
 private:
