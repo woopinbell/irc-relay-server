@@ -10,6 +10,7 @@
 #include <ctime>
 #include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
 class IrcMessage;
@@ -17,10 +18,18 @@ class IrcMessage;
 struct AppMetrics {
     std::size_t commandsHandled;
     std::size_t messagesRelayed;
+    std::size_t roomsCreated;
     std::size_t rateLimitedClients;
+    std::size_t idleTimeouts;
+    std::size_t heartbeatPings;
 
     AppMetrics();
 };
+
+void logEvent(
+    const std::string& eventName,
+    const std::vector<std::pair<std::string, std::string> >& fields
+);
 
 class IrcApplication {
 public:
@@ -30,6 +39,7 @@ public:
     void onLine(Connection& connection, const std::string& line);
     void onDisconnect(Connection& connection, const std::string& reason);
     void onTick();
+    void logMetrics() const;
 
 private:
     Server& _server;

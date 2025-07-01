@@ -22,6 +22,10 @@ void IrcApplication::onConnect(Connection& connection) {
     client.connectedAt = now;
     client.lastActivityAt = now;
     _clients.state(client.fd) = client;
+    logEvent("client_connected", std::vector<std::pair<std::string, std::string> >{
+        std::make_pair("fd", std::to_string(client.fd)),
+        std::make_pair("peer", client.host)
+    });
 }
 
 void IrcApplication::onLine(Connection& connection, const std::string& line) {
@@ -46,6 +50,10 @@ void IrcApplication::onLine(Connection& connection, const std::string& line) {
 
 void IrcApplication::onDisconnect(Connection& connection, const std::string& reason) {
     removeClientState(connection.fd(), reason, true);
+    logEvent("client_disconnected", std::vector<std::pair<std::string, std::string> >{
+        std::make_pair("fd", std::to_string(connection.fd())),
+        std::make_pair("reason", reason)
+    });
 }
 
 void IrcApplication::onTick() {
@@ -54,6 +62,23 @@ void IrcApplication::onTick() {
     for (std::size_t i = 0; i < fds.size(); ++i) {
         maintainClient(fds[i], now);
     }
+}
+
+void IrcApplication::logMetrics() const {
+    const Server::Metrics& serverMetrics = _server.metrics();
+    logEvent("server_metrics", std::vector<std::pair<std::string, std::string> >{
+        std::make_pair("accepted", std::to_string(serverMetrics.acceptedConnections)),
+        std::make_pair("closed", std::to_string(serverMetrics.closedConnections)),
+        std::make_pair("lines", std::to_string(serverMetrics.linesReceived)),
+        std::make_pair("queue_drops", std::to_string(serverMetrics.outboundQueueDrops)),
+        std::make_pair("commands", std::to_string(_metrics.commandsHandled)),
+        std::make_pair("messages", std::to_string(_metrics.messagesRelayed)),
+        std::make_pair("rooms", std::to_string(_channels.size())),
+        std::make_pair("rooms_created", std::to_string(_metrics.roomsCreated)),
+        std::make_pair("rate_limited", std::to_string(_metrics.rateLimitedClients)),
+        std::make_pair("idle_timeouts", std::to_string(_metrics.idleTimeouts)),
+        std::make_pair("heartbeats", std::to_string(_metrics.heartbeatPings))
+    });
 }
 
 void IrcApplication::handleMessage(int fd, const IrcMessage& message) {
@@ -113,8 +138,13 @@ void IrcApplication::maintainClient(int fd, std::time_t now) {
     }
     if (client.awaitingPong &&
         now - client.lastPingAt >= _runtime.pingTimeoutSeconds) {
+        ++_metrics.idleTimeouts;
         sendRaw(fd, Replies::error("Ping timeout"));
         requestClose(fd, "ping timeout");
+        logEvent("client_ping_timeout", std::vector<std::pair<std::string, std::string> >{
+            std::make_pair("fd", std::to_string(fd)),
+            std::make_pair("nick", replyTarget(fd))
+        });
         return;
     }
     if (!client.awaitingPong &&
@@ -123,6 +153,7 @@ void IrcApplication::maintainClient(int fd, std::time_t now) {
         sendRaw(fd, Replies::formatMessage(_serverName, "PING", std::vector<std::string>(1, token)));
         client.awaitingPong = true;
         client.lastPingAt = now;
+        ++_metrics.heartbeatPings;
     }
 }
 
@@ -137,6 +168,10 @@ bool IrcApplication::recordCommand(int fd, std::time_t now) {
         ++_metrics.rateLimitedClients;
         sendNumeric(fd, 439, std::vector<std::string>(), "Command rate limit exceeded");
         requestClose(fd, "command rate limit exceeded");
+        logEvent("client_rate_limited", std::vector<std::pair<std::string, std::string> >{
+            std::make_pair("fd", std::to_string(fd)),
+            std::make_pair("nick", replyTarget(fd))
+        });
         return false;
     }
     return true;

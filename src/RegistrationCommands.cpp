@@ -4,6 +4,7 @@
 #include "Replies.hpp"
 
 #include <cctype>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -122,4 +123,8 @@ void IrcApplication::maybeRegister(int fd) {
     sendNumeric(fd, 1, std::vector<std::string>(), "Welcome to irc-relay-server, " + client.nick);
     sendNumeric(fd, 2, std::vector<std::string>(), "Your host is " + _serverName);
     sendNumeric(fd, 3, std::vector<std::string>(), "This server is running a C++17 event backend");
+    logEvent("client_registered", std::vector<std::pair<std::string, std::string> >{
+        std::make_pair("fd", std::to_string(fd)),
+        std::make_pair("nick", client.nick)
+    });
 }

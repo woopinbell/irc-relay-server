@@ -9,6 +9,8 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace {
     volatile std::sig_atomic_t gRunning = 1;
@@ -53,15 +55,21 @@ int main(int argc, char** argv) {
             app->onDisconnect(connection, reason);
         });
         server.setErrorHandler([](const std::string& message) {
-            std::cerr << "irc-relay-server: " << message << std::endl;
+            logEvent("server_error", std::vector<std::pair<std::string, std::string> >{
+                std::make_pair("message", message)
+            });
         });
 
         server.start();
+        logEvent("server_started", std::vector<std::pair<std::string, std::string> >{
+            std::make_pair("port", std::to_string(server.port()))
+        });
         std::cout << "Listening on port " << server.port() << std::endl;
         while (gRunning && server.isRunning()) {
             server.pollOnce();
             app->onTick();
         }
+        app->logMetrics();
         server.setConnectHandler(Server::ConnectHandler());
         server.setLineHandler(Server::LineHandler());
         server.setDisconnectHandler(Server::DisconnectHandler());
