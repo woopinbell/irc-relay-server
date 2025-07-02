@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import re
 import signal
+import struct
 import subprocess
 import sys
 import time
@@ -86,6 +87,20 @@ def check_cli_contract(manifest: Dict[str, object], binary: str) -> None:
         ["0", "contract-secret"],
         expected_stderr="irc-relay-server: port must be an integer from 1 to 65535\n",
     )
+    for label, port in (
+        ("signed_port", "+6667"),
+        ("negative_port", "-6667"),
+        ("leading_space_port", " 6667"),
+        ("trailing_space_port", "6667 "),
+        ("port_narrowing_overflow", "65536"),
+    ):
+        check_cli(
+            manifest,
+            binary,
+            label,
+            [port, "contract-secret"],
+            expected_stderr="irc-relay-server: port must be an integer from 1 to 65535\n",
+        )
     check_cli(
         manifest,
         binary,
@@ -93,6 +108,20 @@ def check_cli_contract(manifest: Dict[str, object], binary: str) -> None:
         ["6667", "contract-secret", "--idle-timeout=0"],
         expected_stderr="irc-relay-server: idle timeout must be a positive integer\n",
     )
+    for label, value in (
+        ("signed_timeout", "+1"),
+        ("negative_timeout", "-1"),
+        ("leading_space_timeout", " 1"),
+        ("trailing_space_timeout", "1 "),
+        ("timeout_overflow", "999999999999999999999999999999999999999"),
+    ):
+        check_cli(
+            manifest,
+            binary,
+            label,
+            ["6667", "contract-secret", f"--idle-timeout={value}"],
+            expected_stderr="irc-relay-server: idle timeout must be a positive integer\n",
+        )
     check_cli(
         manifest,
         binary,
@@ -114,6 +143,32 @@ def check_cli_contract(manifest: Dict[str, object], binary: str) -> None:
         ["6667", "contract-secret", "--max-pending-bytes=abc"],
         stderr_prefix="irc-relay-server: max pending bytes must be an unsigned integer",
     )
+    size_t_overflow = str(1 << (struct.calcsize("P") * 8))
+    for label, option, expected_name in (
+        ("signed_size", "--max-connections=+1", "max connections"),
+        ("negative_size", "--max-connections=-1", "max connections"),
+        ("leading_space_size", "--max-connections= 1", "max connections"),
+        ("trailing_space_size", "--max-connections=1 ", "max connections"),
+        (
+            "size_t_narrowing_overflow",
+            f"--max-pending-bytes={size_t_overflow}",
+            "max pending bytes",
+        ),
+        (
+            "rate_count_overflow",
+            f"--rate-limit={size_t_overflow}:1",
+            "rate limit count",
+        ),
+    ):
+        check_cli(
+            manifest,
+            binary,
+            label,
+            ["6667", "contract-secret", option],
+            expected_stderr=(
+                f"irc-relay-server: {expected_name} must be an unsigned integer\n"
+            ),
+        )
 
 
 def record_exact(
