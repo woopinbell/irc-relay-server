@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export PYTHONDONTWRITEBYTECODE=1
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PORT="${IRC_SMOKE_PORT:-$(python3 - <<'PY'
@@ -50,4 +51,9 @@ raise SystemExit("server did not accept connections")
 PY
 
 python3 "${ROOT}/tools/irc_smoke_client.py" 127.0.0.1 "${PORT}" "${PASSWORD}"
+python3 "${ROOT}/tests/irc_contract.py" \
+	"${ROOT}/irc-relay-server" 127.0.0.1 "${PORT}" "${PASSWORD}" \
+	"${SERVER_PID}" "${LOG_FILE}"
+wait "${SERVER_PID}"
+SERVER_PID=""
 echo "IRC smoke passed on port ${PORT}"
