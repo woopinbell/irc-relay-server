@@ -103,10 +103,16 @@ void IrcApplication::handlePing(int fd, const IrcMessage& message) {
     sendRaw(fd, Replies::formatMessage(_serverName, "PONG", params));
 }
 
-void IrcApplication::handlePong(int fd, const IrcMessage&) {
+void IrcApplication::handlePong(int fd, const IrcMessage& message) {
     ClientState& client = _clients.state(fd);
+    if (!client.awaitingPong ||
+        message.params.size() != 1 ||
+        message.params[0] != client.pendingPongToken) {
+        return;
+    }
     client.awaitingPong = false;
-    client.lastPingAt = 0;
+    client.pendingPongToken.clear();
+    client.lastPingAt = MonotonicTime();
 }
 
 void IrcApplication::handleQuit(int fd, const IrcMessage& message) {

@@ -1,11 +1,14 @@
 #ifndef IRC_CLIENT_REGISTRY_HPP
 #define IRC_CLIENT_REGISTRY_HPP
 
-#include <ctime>
+#include <chrono>
 #include <deque>
 #include <map>
 #include <string>
 #include <vector>
+
+typedef std::chrono::steady_clock MonotonicClock;
+typedef MonotonicClock::time_point MonotonicTime;
 
 struct ClientState {
     int fd;
@@ -18,10 +21,11 @@ struct ClientState {
     std::string user;
     std::string realname;
     std::string host;
-    std::time_t connectedAt;
-    std::time_t lastActivityAt;
-    std::time_t lastPingAt;
-    std::deque<std::time_t> commandWindow;
+    std::string pendingPongToken;
+    MonotonicTime connectedAt;
+    MonotonicTime lastActivityAt;
+    MonotonicTime lastPingAt;
+    std::deque<MonotonicTime> commandWindow;
 
     ClientState();
 };

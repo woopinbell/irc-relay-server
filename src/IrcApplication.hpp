@@ -7,7 +7,7 @@
 #include "Server.hpp"
 
 #include <cstddef>
-#include <ctime>
+#include <cstdint>
 #include <map>
 #include <string>
 #include <utility>
@@ -50,13 +50,14 @@ private:
     ClientRegistry _clients;
     std::map<std::string, Channel> _channels;
     AppMetrics _metrics;
+    std::uint64_t _nextHeartbeatToken;
 
     static std::vector<std::string> splitComma(const std::string& value);
     static bool isChannelTarget(const std::string& target);
 
     void handleMessage(int fd, const IrcMessage& message);
-    void maintainClient(int fd, std::time_t now);
-    bool recordCommand(int fd, std::time_t now);
+    void maintainClient(int fd, const MonotonicTime& now);
+    bool recordCommand(int fd, const MonotonicTime& now);
 
     void handlePass(int fd, const IrcMessage& message);
     void handleNick(int fd, const IrcMessage& message);

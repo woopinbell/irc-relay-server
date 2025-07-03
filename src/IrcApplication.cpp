@@ -4,17 +4,18 @@
 #include "IrcMessage.hpp"
 #include "Replies.hpp"
 
-#include <ctime>
+#include <chrono>
 
 IrcApplication::IrcApplication(Server& server, const std::string& password, const RuntimeConfig& runtime)
     : _server(server),
       _password(password),
       _runtime(runtime),
-      _serverName("irc.relay.local") {
+      _serverName("irc.relay.local"),
+      _nextHeartbeatToken(0) {
 }
 
 void IrcApplication::onConnect(Connection& connection) {
-    const std::time_t now = std::time(NULL);
+    const MonotonicTime now = MonotonicClock::now();
     ClientState client;
     client.fd = connection.fd();
     client.host = connection.peerAddress();
@@ -33,7 +34,7 @@ void IrcApplication::onLine(Connection& connection, const std::string& line) {
     if (!_clients.contains(fd)) {
         onConnect(connection);
     }
-    const std::time_t now = std::time(NULL);
+    const MonotonicTime now = MonotonicClock::now();
     _clients.state(fd).lastActivityAt = now;
 
     IrcMessage message;
@@ -58,7 +59,7 @@ void IrcApplication::onDisconnect(Connection& connection, const std::string& rea
 }
 
 void IrcApplication::onTick() {
-    const std::time_t now = std::time(NULL);
+    const MonotonicTime now = MonotonicClock::now();
     const std::vector<int> fds = _clients.fds();
     for (std::size_t i = 0; i < fds.size(); ++i) {
         maintainClient(fds[i], now);
@@ -131,14 +132,14 @@ void IrcApplication::handleMessage(int fd, const IrcMessage& message) {
     }
 }
 
-void IrcApplication::maintainClient(int fd, std::time_t now) {
+void IrcApplication::maintainClient(int fd, const MonotonicTime& now) {
     ClientState* found = _clients.find(fd);
     if (found == NULL) {
         return;
     }
     ClientState& client = *found;
     if (!client.registered &&
-        now - client.connectedAt >= _runtime.registrationTimeoutSeconds) {
+        now - client.connectedAt >= std::chrono::seconds(_runtime.registrationTimeoutSeconds)) {
         sendNumeric(fd, 451, std::vector<std::string>(), "Registration timeout");
         requestClose(fd, "registration timeout");
         return;
@@ -147,7 +148,7 @@ void IrcApplication::maintainClient(int fd, std::time_t now) {
         return;
     }
     if (client.awaitingPong &&
-        now - client.lastPingAt >= _runtime.pingTimeoutSeconds) {
+        now - client.lastPingAt >= std::chrono::seconds(_runtime.pingTimeoutSeconds)) {
         ++_metrics.idleTimeouts;
         sendRaw(fd, Replies::error("Ping timeout"));
         requestClose(fd, "ping timeout");
@@ -158,19 +159,22 @@ void IrcApplication::maintainClient(int fd, std::time_t now) {
         return;
     }
     if (!client.awaitingPong &&
-        now - client.lastActivityAt >= _runtime.idleTimeoutSeconds) {
-        const std::string token = "heartbeat-" + std::to_string(fd) + "-" + std::to_string(now);
+        now - client.lastActivityAt >= std::chrono::seconds(_runtime.idleTimeoutSeconds)) {
+        const std::string token =
+            "heartbeat-" + std::to_string(fd) + "-" + std::to_string(++_nextHeartbeatToken);
         sendRaw(fd, Replies::formatMessage(_serverName, "PING", std::vector<std::string>(1, token)));
         client.awaitingPong = true;
+        client.pendingPongToken = token;
         client.lastPingAt = now;
         ++_metrics.heartbeatPings;
     }
 }
 
-bool IrcApplication::recordCommand(int fd, std::time_t now) {
+bool IrcApplication::recordCommand(int fd, const MonotonicTime& now) {
     ClientState& client = _clients.state(fd);
     while (!client.commandWindow.empty() &&
-           now - client.commandWindow.front() >= _runtime.rateLimitWindowSeconds) {
+           now - client.commandWindow.front() >=
+               std::chrono::seconds(_runtime.rateLimitWindowSeconds)) {
         client.commandWindow.pop_front();
     }
     client.commandWindow.push_back(now);
