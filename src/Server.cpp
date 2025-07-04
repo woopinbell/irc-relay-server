@@ -89,6 +89,18 @@ Server::Server(Config config)
 {
 }
 
+Server::Server(Config config, std::unique_ptr<EventManager> eventManager)
+    : config_(std::move(config))
+    , listenFd_(-1)
+    , eventManager_(std::move(eventManager))
+    , running_(false)
+    , stopRequested_(false)
+{
+    if (!eventManager_) {
+        throw std::invalid_argument("event manager must not be null");
+    }
+}
+
 Server::~Server()
 {
     stop();
@@ -102,9 +114,17 @@ void Server::start()
         return;
     }
 
-    eventManager_ = EventManager::createDefault();
+    if (!eventManager_) {
+        eventManager_ = EventManager::createDefault();
+    }
     createListenSocket();
-    eventManager_->addFd(listenFd_, EventInterest::Read);
+    try {
+        eventManager_->addFd(listenFd_, EventInterest::Read);
+    } catch (...) {
+        closeListenSocket();
+        eventManager_.reset();
+        throw;
+    }
     stopRequested_ = false;
     running_ = true;
 }
@@ -217,8 +237,8 @@ bool Server::sendTo(int fd, const std::string& line)
     if (!queued) {
         ++metrics_.outboundQueueDrops;
     }
-    refreshInterest(*connection);
-    return queued;
+    const bool refreshed = refreshInterest(fd);
+    return queued && refreshed;
 }
 
 bool Server::queueRawTo(int fd, const std::string& bytes)
@@ -231,8 +251,8 @@ bool Server::queueRawTo(int fd, const std::string& bytes)
     if (!queued) {
         ++metrics_.outboundQueueDrops;
     }
-    refreshInterest(*connection);
-    return queued;
+    const bool refreshed = refreshInterest(fd);
+    return queued && refreshed;
 }
 
 void Server::disconnect(int fd, const std::string& reason)
@@ -372,22 +392,31 @@ void Server::acceptReadyClients()
             clientFd = -1;
 
             const int fd = connection->fd();
-            eventManager_->addFd(fd, EventInterest::Read);
-            Connection* connectionPtr = connection.get();
-            connections_[fd] = std::move(connection);
+            const std::pair<std::unordered_map<int, std::unique_ptr<Connection> >::iterator, bool>
+                inserted = connections_.emplace(fd, std::move(connection));
+            if (!inserted.second) {
+                throw std::logic_error("accepted descriptor is already registered");
+            }
+            try {
+                eventManager_->addFd(fd, EventInterest::Read);
+            } catch (...) {
+                connections_.erase(inserted.first);
+                throw;
+            }
             ++metrics_.acceptedConnections;
 
             if (onConnect_) {
                 try {
-                    onConnect_(*connectionPtr);
+                    onConnect_(*inserted.first->second);
                 } catch (const std::exception& exception) {
                     reportError(exception.what());
-                    connectionPtr->requestClose("connect handler error");
+                    Connection* current = findConnection(fd);
+                    if (current != NULL) {
+                        current->requestClose("connect handler error");
+                    }
                 }
             }
-            if (connections_.find(fd) != connections_.end()) {
-                refreshInterest(*connectionPtr);
-            }
+            refreshInterest(fd);
         } catch (const std::exception& exception) {
             if (clientFd != -1) {
                 ::close(clientFd);
@@ -410,8 +439,8 @@ void Server::handleClientEvent(const Event& event)
         return;
     }
 
+    const int fd = found->second->fd();
     Connection* connection = found->second.get();
-    const int fd = connection->fd();
 
     if (event.error) {
         disconnect(fd, eventErrorMessage(event));
@@ -434,10 +463,14 @@ void Server::handleClientEvent(const Event& event)
                     onLine_(*connection, *line);
                 } catch (const std::exception& exception) {
                     reportError(exception.what());
-                    connection->requestClose("line handler error");
+                    Connection* current = findConnection(fd);
+                    if (current != NULL) {
+                        current->requestClose("line handler error");
+                    }
                 }
             }
-            if (connections_.find(fd) == connections_.end()) {
+            connection = findConnection(fd);
+            if (connection == NULL) {
                 return;
             }
             if (connection->closeRequested()) {
@@ -450,7 +483,8 @@ void Server::handleClientEvent(const Event& event)
         }
     }
 
-    if (connections_.find(fd) == connections_.end()) {
+    connection = findConnection(fd);
+    if (connection == NULL) {
         return;
     }
 
@@ -460,6 +494,10 @@ void Server::handleClientEvent(const Event& event)
             disconnect(fd, writeResult.error);
             return;
         }
+        connection = findConnection(fd);
+        if (connection == NULL) {
+            return;
+        }
     }
 
     if (event.hangup && !connection->wantsWrite()) {
@@ -467,23 +505,34 @@ void Server::handleClientEvent(const Event& event)
         return;
     }
 
-    refreshInterest(*connection);
+    refreshInterest(fd);
 }
 
-void Server::refreshInterest(Connection& connection)
+bool Server::refreshInterest(int fd)
 {
-    const int fd = connection.fd();
-
-    if (connection.closeRequested() && !connection.wantsWrite()) {
-        disconnect(fd, connection.closeReason());
-        return;
+    Connection* connection = findConnection(fd);
+    if (connection == NULL) {
+        return false;
     }
 
-    EventInterest interests = connection.closeRequested() ? EventInterest::Write : EventInterest::Read;
-    if (connection.wantsWrite()) {
+    if (connection->closeRequested() && !connection->wantsWrite()) {
+        disconnect(fd, connection->closeReason());
+        return false;
+    }
+
+    EventInterest interests =
+        connection->closeRequested() ? EventInterest::Write : EventInterest::Read;
+    if (connection->wantsWrite()) {
         interests |= EventInterest::Write;
     }
-    eventManager_->updateFd(fd, interests);
+    try {
+        eventManager_->updateFd(fd, interests);
+    } catch (const std::exception& exception) {
+        reportError(exception.what());
+        disconnect(fd, "event interest update failed");
+        return false;
+    }
+    return true;
 }
 
 void Server::closeListenSocket() noexcept
@@ -516,10 +565,13 @@ void Server::closeAllConnections()
     }
 }
 
-void Server::reportError(const std::string& message) const
+void Server::reportError(const std::string& message) const noexcept
 {
     if (onError_) {
-        onError_(message);
+        try {
+            onError_(message);
+        } catch (...) {
+        }
     }
 }
 
