@@ -71,6 +71,9 @@ void IrcApplication::handleNick(int fd, const IrcMessage& message) {
 
     if (wasRegistered) {
         broadcastToCommon(fd, Replies::formatMessage(oldPrefix, "NICK", std::vector<std::string>(1, nextNick)), true);
+        if (!_clients.contains(fd)) {
+            return;
+        }
     }
 
     maybeRegister(fd);
@@ -121,16 +124,23 @@ void IrcApplication::handleQuit(int fd, const IrcMessage& message) {
 }
 
 void IrcApplication::maybeRegister(int fd) {
-    ClientState& client = _clients.state(fd);
-    if (client.registered || !client.passOk || !client.hasNick || !client.hasUser) {
+    ClientState* client = _clients.find(fd);
+    if (client == NULL || client->registered || !client->passOk || !client->hasNick || !client->hasUser) {
         return;
     }
-    client.registered = true;
-    sendNumeric(fd, 1, std::vector<std::string>(), "Welcome to irc-relay-server, " + client.nick);
-    sendNumeric(fd, 2, std::vector<std::string>(), "Your host is " + _serverName);
-    sendNumeric(fd, 3, std::vector<std::string>(), "This server is running a C++17 event backend");
+    client->registered = true;
+    const std::string nick = client->nick;
+    if (!sendNumeric(fd, 1, std::vector<std::string>(), "Welcome to irc-relay-server, " + nick)) {
+        return;
+    }
+    if (!sendNumeric(fd, 2, std::vector<std::string>(), "Your host is " + _serverName)) {
+        return;
+    }
+    if (!sendNumeric(fd, 3, std::vector<std::string>(), "This server is running a C++17 event backend")) {
+        return;
+    }
     logEvent("client_registered", std::vector<std::pair<std::string, std::string> >{
         std::make_pair("fd", std::to_string(fd)),
-        std::make_pair("nick", client.nick)
+        std::make_pair("nick", nick)
     });
 }

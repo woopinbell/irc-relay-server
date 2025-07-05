@@ -82,11 +82,11 @@ private:
     void handleMetrics(int fd);
     Channel& ensureChannel(const std::string& name);
     Channel* findChannelForCommand(int fd, const std::string& name, bool requireMembership);
-    void sendTopicReply(int fd, const Channel& channel);
-    void sendNames(int fd, const Channel& channel);
+    bool sendTopicReply(int fd, const Channel& channel);
+    bool sendNames(int fd, const Channel& channel);
     void partAllChannels(int fd, const std::string& reason);
     void partChannel(int fd, const std::string& channelName, const std::string& reason);
-    void broadcastMode(int fd, const Channel& channel, const std::string& mode, const std::string& arg);
+    bool broadcastMode(int fd, const Channel& channel, const std::string& mode, const std::string& arg);
     void broadcastToChannel(const std::string& channelName, const std::string& line, int exceptFd);
     void broadcastToCommon(int fd, const std::string& line, bool includeSelf);
     void eraseChannelIfEmpty(const std::string& channelName);
@@ -94,14 +94,14 @@ private:
     std::string replyTarget(int fd) const;
     std::string prefixFor(int fd) const;
     std::string prefixFor(const ClientState& client) const;
-    void sendNumeric(
+    bool sendNumeric(
         int fd,
         int numericCode,
         const std::vector<std::string>& params,
         const std::string& trailing
     );
-    void sendNumericRaw(int fd, int numericCode, const std::vector<std::string>& params);
-    void sendRaw(int fd, const std::string& line);
+    bool sendNumericRaw(int fd, int numericCode, const std::vector<std::string>& params);
+    bool sendRaw(int fd, const std::string& line);
     void requestClose(int fd, const std::string& reason);
     void removeClientState(int fd, const std::string& reason, bool notifyPeers);
 };

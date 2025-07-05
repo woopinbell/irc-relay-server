@@ -133,13 +133,12 @@ void IrcApplication::handleMessage(int fd, const IrcMessage& message) {
 }
 
 void IrcApplication::maintainClient(int fd, const MonotonicTime& now) {
-    ClientState* found = _clients.find(fd);
-    if (found == NULL) {
+    ClientState* client = _clients.find(fd);
+    if (client == NULL) {
         return;
     }
-    ClientState& client = *found;
-    if (!client.registered &&
-        now - client.connectedAt >= std::chrono::seconds(_runtime.registrationTimeoutSeconds)) {
+    if (!client->registered &&
+        now - client->connectedAt >= std::chrono::seconds(_runtime.registrationTimeoutSeconds)) {
         sendNumeric(fd, 451, std::vector<std::string>(), "Registration timeout");
         requestClose(fd, "registration timeout");
         return;
@@ -147,8 +146,8 @@ void IrcApplication::maintainClient(int fd, const MonotonicTime& now) {
     if (_runtime.idleTimeoutSeconds <= 0) {
         return;
     }
-    if (client.awaitingPong &&
-        now - client.lastPingAt >= std::chrono::seconds(_runtime.pingTimeoutSeconds)) {
+    if (client->awaitingPong &&
+        now - client->lastPingAt >= std::chrono::seconds(_runtime.pingTimeoutSeconds)) {
         ++_metrics.idleTimeouts;
         sendRaw(fd, Replies::error("Ping timeout"));
         requestClose(fd, "ping timeout");
@@ -158,14 +157,16 @@ void IrcApplication::maintainClient(int fd, const MonotonicTime& now) {
         });
         return;
     }
-    if (!client.awaitingPong &&
-        now - client.lastActivityAt >= std::chrono::seconds(_runtime.idleTimeoutSeconds)) {
+    if (!client->awaitingPong &&
+        now - client->lastActivityAt >= std::chrono::seconds(_runtime.idleTimeoutSeconds)) {
         const std::string token =
             "heartbeat-" + std::to_string(fd) + "-" + std::to_string(++_nextHeartbeatToken);
-        sendRaw(fd, Replies::formatMessage(_serverName, "PING", std::vector<std::string>(1, token)));
-        client.awaitingPong = true;
-        client.pendingPongToken = token;
-        client.lastPingAt = now;
+        client->awaitingPong = true;
+        client->pendingPongToken = token;
+        client->lastPingAt = now;
+        if (!sendRaw(fd, Replies::formatMessage(_serverName, "PING", std::vector<std::string>(1, token)))) {
+            return;
+        }
         ++_metrics.heartbeatPings;
     }
 }
