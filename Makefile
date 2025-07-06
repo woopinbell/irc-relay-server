@@ -26,7 +26,7 @@ SRCS := src/main.cpp src/IrcApplication.cpp src/RegistrationCommands.cpp src/Mes
 OBJS := $(SRCS:.cpp=.o)
 DEPS := $(OBJS:.o=.d)
 
-.PHONY: all application-test clean connection-test fclean re test unit smoke
+.PHONY: all application-test clean connection-test event-test fclean re smoke test unit
 
 all: $(NAME)
 
@@ -58,6 +58,10 @@ application-test: $(APPLICATION_LIFETIME_TEST)
 
 test: all connection-test unit application-test
 	bash tests/irc_smoke.sh
+	$(MAKE) event-test
+
+event-test: all
+	PYTHONDONTWRITEBYTECODE=1 python3 tests/irc_event_fairness.py ./$(NAME)
 
 smoke: test
 
