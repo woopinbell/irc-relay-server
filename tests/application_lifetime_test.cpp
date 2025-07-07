@@ -1,8 +1,16 @@
+#include "Channel.hpp"
+#include "ClientRegistry.hpp"
 #include "EventManager.hpp"
-#include "IrcApplication.hpp"
+#include "IrcMessage.hpp"
+#include "RuntimeConfig.hpp"
 #include "Server.hpp"
 
+#define private public
+#include "IrcApplication.hpp"
+#undef private
+
 #include <arpa/inet.h>
+#include <algorithm>
 #include <poll.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -33,6 +41,10 @@ class FakeEventManager : public irc::EventManager {
 public:
     void addFd(int fd, irc::EventInterest interests) override { interests_[fd] = interests; }
     void updateFd(int fd, irc::EventInterest interests) override {
+        if (fd == failUpdateFd_) {
+            failUpdateFd_ = -1;
+            throw std::runtime_error("injected update failure");
+        }
         if (interests_.find(fd) == interests_.end()) {
             throw std::runtime_error("updated an unregistered descriptor");
         }
@@ -59,9 +71,32 @@ public:
         }
         return -1;
     }
+    std::vector<int> clientFds(int listenFd) const {
+        std::vector<int> result;
+        for (std::unordered_map<int, irc::EventInterest>::const_iterator it = interests_.begin();
+             it != interests_.end(); ++it) {
+            if (it->first != listenFd) {
+                result.push_back(it->first);
+            }
+        }
+        std::sort(result.begin(), result.end());
+        return result;
+    }
+    void failNextUpdateFor(int fd) { failUpdateFd_ = fd; }
+    std::size_t clientCount(int listenFd) const {
+        std::size_t count = 0;
+        for (std::unordered_map<int, irc::EventInterest>::const_iterator it = interests_.begin();
+             it != interests_.end(); ++it) {
+            if (it->first != listenFd) {
+                ++count;
+            }
+        }
+        return count;
+    }
 private:
     std::unordered_map<int, irc::EventInterest> interests_;
     std::vector<irc::Event> events_;
+    int failUpdateFd_ = -1;
 };
 
 class ClientSocket {
@@ -162,11 +197,80 @@ void registrationQueueFailureTest() {
     server.setDisconnectHandler(Server::DisconnectHandler());
     server.stop();
 }
+
+void modeStopsAfterSenderCleanupTest() {
+    CapturedStderr captured;
+    std::unique_ptr<FakeEventManager> ownedEvents(new FakeEventManager());
+    FakeEventManager* events = ownedEvents.get();
+    irc::Server::Config config;
+    config.bindAddress = "127.0.0.1";
+    config.port = 0;
+    config.eventTimeoutMs = 0;
+    irc::Server server(config, std::move(ownedEvents));
+    RuntimeConfig runtime;
+    IrcApplication app(server, "", runtime);
+    server.setConnectHandler([&app](Connection& connection) { app.onConnect(connection); });
+    server.setDisconnectHandler([&app](Connection& connection, const std::string& reason) {
+        app.onDisconnect(connection, reason);
+    });
+    server.start();
+
+    ClientSocket first(server.port());
+    acceptUntil(server, *events, 1);
+    ClientSocket second(server.port());
+    acceptUntil(server, *events, 2);
+    const std::vector<int> fds = events->clientFds(server.listenFd());
+    require(fds.size() == 2, "two application connections were not registered");
+    const int senderFd = fds[0];
+    const int peerFd = fds[1];
+
+    app._clients.setNickname(senderFd, "operator");
+    ClientState* sender = app._clients.find(senderFd);
+    require(sender != NULL, "sender state was not created");
+    sender->registered = true;
+    sender->user = "operator";
+    app._clients.setNickname(peerFd, "peer");
+    ClientState* peer = app._clients.find(peerFd);
+    require(peer != NULL, "peer state was not created");
+    peer->registered = true;
+    peer->user = "peer";
+
+    Channel room("#room");
+    room.addMember(senderFd, true);
+    room.addMember(peerFd, false);
+    room.setTopicProtected(false);
+    app._channels.insert(std::make_pair(std::string("#room"), room));
+
+    events->failNextUpdateFor(senderFd);
+    IrcMessage mode;
+    mode.command = "MODE";
+    mode.params.push_back("#room");
+    mode.params.push_back("+it");
+    app.handleChannelMode(senderFd, mode);
+
+    std::map<std::string, Channel>::const_iterator current = app._channels.find("#room");
+    const bool channelPresent = current != app._channels.end();
+    const bool inviteOnly = channelPresent && current->second.isInviteOnly();
+    const bool topicProtected = channelPresent && current->second.isTopicProtected();
+    const bool senderRemoved = !app._clients.contains(senderFd);
+    const bool peerPresent = app._clients.contains(peerFd);
+    server.setConnectHandler(Server::ConnectHandler());
+    server.setDisconnectHandler(Server::DisconnectHandler());
+    server.stop();
+
+    require(channelPresent, "peer channel state was removed");
+    require(inviteOnly, "first channel mode was not applied");
+    require(!topicProtected, "later channel mode was applied after the sender was removed");
+    require(senderRemoved, "sender state survived the injected update failure");
+    require(peerPresent, "unrelated peer state was removed");
+}
+
 } // namespace
 
 int main() {
     try {
         registrationQueueFailureTest();
+        modeStopsAfterSenderCleanupTest();
     } catch (const std::exception& exception) {
         std::cerr << "application lifetime test failed: " << exception.what() << '\n';
         return 1;
