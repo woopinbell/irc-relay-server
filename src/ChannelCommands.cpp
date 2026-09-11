@@ -6,6 +6,12 @@
 #include <set>
 #include <vector>
 
+// [INTV:EDGE] 이 함수 전체에 반복되는 "if (!sendNumeric(...)) return;" 패턴: sendX 계열 함수는
+// 송신 큐잉이 실패하면(백프레셔 등으로 연결이 끊긴 경우) false를 반환한다 — 그 순간 fd가 더 이상
+// 유효하지 않을 수 있으므로, 실패한 송신 이후로는 같은 루프 반복 안에서도 그 클라이언트에 대한 추가
+// 작업을 계속하지 않고 즉시 반환한다.
+// - [TRAP] 이 반환값 체크를 생략하고 항상 성공한다고 가정하면, 연결이 끊긴 fd에 계속 접근해 이미
+//   erase된 ClientState/Connection을 참조하는 use-after-free 경로가 열린다.
 void IrcApplication::handleJoin(int fd, const IrcMessage& message) {
     if (message.params.empty()) {
         sendNumeric(fd, 461, std::vector<std::string>(1, "JOIN"), "Not enough parameters");
@@ -44,6 +50,9 @@ void IrcApplication::handleJoin(int fd, const IrcMessage& message) {
             continue;
         }
 
+        // [INTV:ARCH] "채널의 첫 입장자는 자동으로 오퍼레이터가 된다"는 IRC 관례 — channel.empty()를
+        // addMember 호출 "직전"에 캡처해야 한다. addMember 이후에 판단하면 방금 추가된 자기 자신
+        // 때문에 항상 empty()==false가 되어 아무도 자동 오퍼레이터가 되지 못한다.
         const bool firstMember = channel.empty();
         const std::string nick = client->nick;
         channel.addMember(fd, firstMember);
@@ -288,6 +297,12 @@ void IrcApplication::handleChannelMode(int fd, const IrcMessage& message) {
         return;
     }
 
+    // [INTV:FLOW] MODE 문자열 파싱: '+'/'-' 문자를 만나면 이후 모드 문자들의 적용 방향(추가/해제)을
+    // 바꾸는 상태 플래그로 동작한다("+it-o" 같은 문자열에서 i,t는 추가, o는 해제). 인자가 필요한
+    // 모드('o')만 message.params에서 순서대로 다음 인자를 소비(argIndex 증가)한다.
+    // - [TRAP] argIndex를 모드 문자 인덱스(i)와 동일하게 취급하면 안 된다 — 'i'/'t'처럼 인자가 없는
+    //   모드와 'o'처럼 인자가 있는 모드가 한 문자열에 섞여 있어, 인자 소비 위치는 모드 문자 위치와
+    //   별개로 독립적으로 전진해야 한다.
     bool adding = true;
     std::size_t argIndex = 2;
     const std::string modes = message.params[1];

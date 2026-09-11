@@ -6,6 +6,12 @@
 
 namespace {
 
+// [INTV:ARCH] [INTV:EDGE] 함수 템플릿으로 unsigned short/size_t/unsigned int 등 서로 다른 부호 없는
+// 정수 타입에 대해 같은 파싱+오버플로 검증 로직을 재사용 — parsePort/parseSize/parsePositiveInt가
+// 각자의 타입 상한(maximum)만 다르게 넘겨 같은 코드를 공유한다.
+// - [TRAP] parsed*10+digit을 먼저 계산해 놓고 나중에 maximum과 비교하는 식으로 재구현하면, 계산 자체가
+//   이미 Unsigned 타입에서 wrap-around를 일으킨 뒤라 비교가 무의미해진다. 곱셈 전에
+//   "parsed > maximum/10"과 "몫이 같을 때 나머지 자리까지" 미리 뒤집어 검사하는 순서를 지킬 것.
 template <typename Unsigned>
 Unsigned parseUnsignedDecimal(const std::string& value,
                               Unsigned maximum,

@@ -101,6 +101,9 @@ Channel& IrcApplication::ensureChannel(const std::string& name) {
     return it->second;
 }
 
+// [INTV:ARCH] 채널 관련 명령 핸들러(PART/TOPIC/KICK/MODE 등) 전체가 공유하는 "존재 확인 + 멤버십
+// 확인" 게이트를 한 곳에 모아둔 헬퍼 — 각 핸들러가 이 두 검사(403/442 에러 코드)를 매번 따로 작성할
+// 필요 없이 재사용한다.
 Channel* IrcApplication::findChannelForCommand(int fd, const std::string& name, bool requireMembership) {
     std::map<std::string, Channel>::iterator it = _channels.find(name);
     if (it == _channels.end()) {
@@ -180,6 +183,9 @@ void IrcApplication::partChannel(int fd, const std::string& channelName, const s
     eraseChannelIfEmpty(channelName);
 }
 
+// [INTV:EDGE] 반환값이 "브로드캐스트 이후에도 fd와 채널이 여전히 살아있는가"를 알려준다 —
+// broadcastToChannel이 자기 자신에게도 MODE 라인을 보내는 과정에서 송신 실패로 연결이 끊길 수 있고,
+// 호출부가 그 뒤 이어서 channel/client 상태를 계속 참조하기 전에 이 신호로 안전 여부를 판단한다.
 bool IrcApplication::broadcastMode(int fd, const Channel& channel, const std::string& mode, const std::string& arg) {
     const std::string channelName = channel.name();
     std::vector<std::string> params;
@@ -206,6 +212,9 @@ void IrcApplication::broadcastToChannel(const std::string& channelName, const st
     }
 }
 
+// [INTV:EDGE] std::set<int>로 대상을 모으는 이유: 한 클라이언트가 fd와 같은 채널에 여러 개 함께
+// 속해 있으면(공통 채널이 둘 이상) 같은 대상에게 같은 라인을 중복 전송하게 되는데, set이 자동으로
+// 중복을 제거해 "한 사람에게 한 번만" 보내는 것을 보장한다.
 void IrcApplication::broadcastToCommon(int fd, const std::string& line, bool includeSelf) {
     std::set<int> targets;
     for (std::map<std::string, Channel>::const_iterator it = _channels.begin(); it != _channels.end(); ++it) {
@@ -279,6 +288,12 @@ void IrcApplication::requestClose(int fd, const std::string& reason) {
     }
 }
 
+// [INTV:FLOW] 클라이언트 완전 제거의 3단계: 1) 등록된 클라이언트였다면 공통 채널의 다른 멤버들에게
+// QUIT 통지 -> 2) 이 클라이언트가 속했던 모든 채널에서 멤버십 제거, 비게 된 채널은 삭제 목록에 추가
+// -> 3) ClientRegistry에서 상태/닉네임 인덱스까지 완전히 제거.
+// - [TRAP] const ClientState client = *found;로 상태를 값 복사해두는 이유가 중요하다 — 아래에서
+//   notifyPeers 브로드캐스트(sendRaw)가 실패로 다른 연결을 끊는 부작용을 일으킬 수 있는데, found가
+//   가리키던 원본이 그 과정에서 무효화되더라도 로컬 복사본 client는 안전하게 계속 쓸 수 있다.
 void IrcApplication::removeClientState(int fd, const std::string& reason, bool notifyPeers) {
     const ClientState* found = _clients.find(fd);
     if (found == NULL) {
