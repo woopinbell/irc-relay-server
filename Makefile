@@ -1,7 +1,10 @@
-NAME := irc-relay-server
-CONNECTION_TEST := tests/connection_test
-SERVER_LIFETIME_TEST := tests/server_lifetime_test
-APPLICATION_LIFETIME_TEST := tests/application_lifetime_test
+BIN_DIR := build/bin
+OBJ_DIR := build/obj
+TEST_DIR := build/test
+NAME := $(BIN_DIR)/irc-relay-server
+CONNECTION_TEST := $(TEST_DIR)/connection_test
+SERVER_LIFETIME_TEST := $(TEST_DIR)/server_lifetime_test
+APPLICATION_LIFETIME_TEST := $(TEST_DIR)/application_lifetime_test
 
 CXX ?= c++
 CXXFLAGS ?= -std=c++17 -Wall -Wextra -Werror -g
@@ -23,26 +26,27 @@ SRCS := src/main.cpp src/IrcApplication.cpp src/RegistrationCommands.cpp src/Mes
 	src/ChannelCommands.cpp src/ApplicationSupport.cpp src/ClientRegistry.cpp src/RuntimeConfig.cpp \
 	src/IrcMessage.cpp src/Channel.cpp src/Replies.cpp \
 	src/Connection.cpp src/Server.cpp $(EVENT_SRC)
-OBJS := $(SRCS:.cpp=.o)
+OBJS := $(patsubst src/%.cpp,$(OBJ_DIR)/%.o,$(SRCS))
 DEPS := $(OBJS:.o=.d)
 
 .PHONY: all application-test clean connection-test event-test fclean re smoke test unit
 
 all: $(NAME)
 
-$(NAME): $(OBJS)
+$(NAME): $(OBJS) | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) $(OBJS) -o $@
 
-%.o: %.cpp
+$(OBJ_DIR)/%.o: src/%.cpp | $(OBJ_DIR)
+	mkdir -p $(dir $@)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -MMD -MP -c $< -o $@
 
-$(CONNECTION_TEST): tests/connection_test.cpp src/Connection.cpp include/Connection.hpp src/ConnectionLimits.hpp
+$(CONNECTION_TEST): tests/connection_test.cpp src/Connection.cpp include/Connection.hpp src/ConnectionLimits.hpp | $(TEST_DIR)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) tests/connection_test.cpp src/Connection.cpp -o $@
 
 connection-test: $(CONNECTION_TEST)
 	./$(CONNECTION_TEST)
 
-$(SERVER_LIFETIME_TEST): tests/server_lifetime_test.cpp src/Connection.cpp src/Server.cpp $(EVENT_SRC) include/Server.hpp include/Connection.hpp include/EventManager.hpp src/ConnectionLimits.hpp
+$(SERVER_LIFETIME_TEST): tests/server_lifetime_test.cpp src/Connection.cpp src/Server.cpp $(EVENT_SRC) include/Server.hpp include/Connection.hpp include/EventManager.hpp src/ConnectionLimits.hpp | $(TEST_DIR)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) tests/server_lifetime_test.cpp src/Connection.cpp src/Server.cpp $(EVENT_SRC) -o $@
 
 unit: $(SERVER_LIFETIME_TEST)
@@ -50,7 +54,7 @@ unit: $(SERVER_LIFETIME_TEST)
 
 APP_TEST_SRCS := $(filter-out src/main.cpp,$(SRCS))
 
-$(APPLICATION_LIFETIME_TEST): tests/application_lifetime_test.cpp $(APP_TEST_SRCS) src/IrcApplication.hpp src/ClientRegistry.hpp
+$(APPLICATION_LIFETIME_TEST): tests/application_lifetime_test.cpp $(APP_TEST_SRCS) src/IrcApplication.hpp src/ClientRegistry.hpp | $(TEST_DIR)
 	$(CXX) $(CPPFLAGS) -Isrc $(CXXFLAGS) tests/application_lifetime_test.cpp $(APP_TEST_SRCS) -o $@
 
 application-test: $(APPLICATION_LIFETIME_TEST)
@@ -61,16 +65,17 @@ test: all connection-test unit application-test
 	$(MAKE) event-test
 
 event-test: all
-	PYTHONDONTWRITEBYTECODE=1 python3 tests/irc_event_fairness.py ./$(NAME)
+	PYTHONDONTWRITEBYTECODE=1 python3 tests/irc_event_fairness.py $(NAME)
 
 smoke: test
 
+$(BIN_DIR) $(OBJ_DIR) $(TEST_DIR):
+	mkdir -p $@
+
 clean:
-	rm -f $(OBJS) $(DEPS) $(CONNECTION_TEST) $(SERVER_LIFETIME_TEST) $(APPLICATION_LIFETIME_TEST)
-	rm -rf $(CONNECTION_TEST).dSYM $(SERVER_LIFETIME_TEST).dSYM $(APPLICATION_LIFETIME_TEST).dSYM
+	rm -rf build tests/__pycache__ .pytest_cache
 
 fclean: clean
-	rm -f $(NAME)
 
 re: fclean all
 
