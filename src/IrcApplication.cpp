@@ -29,6 +29,9 @@ void IrcApplication::onConnect(Connection& connection) {
     });
 }
 
+// [INTV:EDGE] !_clients.contains(fd)일 때 onConnect를 다시 호출하는 방어적 분기 — 정상 경로라면
+// Server가 onConnect를 먼저 호출해 상태가 이미 있어야 하지만, 테스트 하네스가 onLine을 직접 호출하는
+// 경우 등 이 불변조건이 깨진 상태에서도 크래시 대신 상태를 만들어 계속 진행하게 한다.
 void IrcApplication::onLine(Connection& connection, const std::string& line) {
     const int fd = connection.fd();
     if (!_clients.contains(fd)) {
@@ -92,6 +95,11 @@ void IrcApplication::logMetrics() const {
     });
 }
 
+// [INTV:ARCH] if-else 체인으로 된 명령 디스패치 테이블 — PASS/NICK/USER/PING/PONG/QUIT은 등록
+// (registration) 전에도 허용되고, 그 외 명령은 등록되지 않은 클라이언트에게 451로 즉시 거부된다.
+// - [TRAP] 이 순서(등록 여부 체크가 PASS~QUIT 분기들 "다음"에 옴)를 지키지 않고 등록 체크를 맨 앞으로
+//   옮기면, 애초에 등록을 진행해야 할 PASS/NICK/USER 명령 자체가 "등록 안 됐다"는 이유로 막혀버려
+//   아무도 등록할 수 없는 교착 상태가 된다.
 void IrcApplication::handleMessage(int fd, const IrcMessage& message) {
     if (message.command == "PASS") {
         handlePass(fd, message);
@@ -132,6 +140,12 @@ void IrcApplication::handleMessage(int fd, const IrcMessage& message) {
     }
 }
 
+// [INTV:FLOW] 클라이언트당 상태 기계 3단계를 매 틱(onTick) 확인: 1) 미등록 상태로 registrationTimeout을
+// 넘기면 강제 종료 -> 2) PONG을 기다리는 중인데 pingTimeout을 넘기면(무응답) 강제 종료 -> 3) 비활성
+// 상태가 idleTimeout을 넘기면 PING을 보내고 PONG 대기 상태로 전환.
+// - [TRAP] awaitingPong 플래그 없이 "마지막 활동 시각만" 보고 반복적으로 PING을 계속 보내도록
+//   재구현하면, 이미 보낸 PING에 대한 응답을 기다리는 중에 또 PING을 보내 상태가 헷갈리게 된다.
+//   "PING을 보냈으면 PONG이 올 때까지는 그 PING의 결과만 판정한다"는 상태 분리가 핵심.
 void IrcApplication::maintainClient(int fd, const MonotonicTime& now) {
     ClientState* client = _clients.find(fd);
     if (client == NULL) {
@@ -171,6 +185,12 @@ void IrcApplication::maintainClient(int fd, const MonotonicTime& now) {
     }
 }
 
+// [INTV:PERF] [INTV:EDGE] 슬라이딩 윈도우 레이트 리밋: commandWindow 앞쪽에서 윈도우(rateLimitWindow
+// Seconds)보다 오래된 타임스탬프를 pop한 뒤 이번 명령을 push하고, 남은 개수가 한도를 넘으면 거부한다.
+// - [FLOW] 1. 윈도우 밖으로 나간 오래된 기록을 앞에서부터 제거 -> 2. 현재 명령 시각을 추가 -> 3. 남은
+//   개수와 한도를 비교해 초과 시 즉시 연결 종료(요청 거부가 아니라 연결 자체를 끊는 강한 정책)
+// - [TRAP] "제거 -> 추가" 순서를 바꿔 먼저 push하고 나중에 trim하면, 트림 조건(>= window) 판정 시점에
+//   방금 추가한 현재 명령까지 포함해 비교하게 되어 경계값에서 오프바이원 오차가 생길 수 있다.
 bool IrcApplication::recordCommand(int fd, const MonotonicTime& now) {
     ClientState& client = _clients.state(fd);
     while (!client.commandWindow.empty() &&

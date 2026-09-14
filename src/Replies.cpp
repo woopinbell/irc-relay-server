@@ -4,6 +4,8 @@
 #include <sstream>
 
 namespace {
+    // [INTV:EDGE] IRC 파라미터 중 공백을 포함하거나, 비어있거나, ':'로 시작하는 값은 trailing 파라미터
+    // 표시(':')를 붙여야 파싱 가능한 형태로 직렬화된다(IrcMessage::toLine의 동일 규칙과 대응).
     bool needsTrailingMarker(const std::string& value) {
         return value.empty() || value.find(' ') != std::string::npos || value[0] == ':';
     }
@@ -23,6 +25,9 @@ std::string Replies::formatMessage(const std::string& prefix,
         out << ':' << prefix << ' ';
     }
     out << command;
+    // [INTV:TRADE_OFF] IrcMessage::toLine()과 달리, 여기서는 needsTrailingMarker를 "마지막 파라미터
+    // 자리(i+1==params.size())에서만" 적용한다 — 프로토콜상 trailing은 실제로 마지막 파라미터에만
+    // 있을 수 있으므로 이쪽이 더 정확한 구현이다(비교: IrcMessage.cpp toLine()의 TRAP 주석 참고).
     for (std::size_t i = 0; i < params.size(); ++i) {
         out << ' ';
         if (i + 1 == params.size() && needsTrailingMarker(params[i])) {

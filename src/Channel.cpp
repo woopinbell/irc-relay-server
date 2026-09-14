@@ -58,6 +58,8 @@ bool Channel::isOperator(int clientId) const {
     return _operators.find(clientId) != _operators.end();
 }
 
+// [INTV:EDGE] 멤버가 아닌 clientId를 오퍼레이터로 승격하려는 요청은 조용히 무시한다 — 채널을 나간
+// 클라이언트에 대한 지연된 MODE 명령 등이 유령 오퍼레이터 항목을 만들지 않도록 막는 방어.
 void Channel::setOperator(int clientId, bool enabled) {
     if (!_members.count(clientId)) {
         return;
@@ -129,6 +131,8 @@ std::string Channel::modeString() const {
     return modes;
 }
 
+// [INTV:EDGE] '#'/'&' 접두사, 공백·쉼표(파라미터 구분자와 충돌)·BEL(7, 알림 문자) 금지 — IRC 채널명
+// 문법의 핵심 제약만 골라 검증한다(RFC 전체 규칙 중 실제로 이 서버가 강제하는 부분집합).
 bool Channel::isValidName(const std::string& name) {
     if (name.size() < 2 || (name[0] != '#' && name[0] != '&')) {
         return false;

@@ -15,6 +15,9 @@
 
 class IrcMessage;
 
+// [INTV:ARCH] IRC 프로토콜/도메인 로직 전체를 담당하는 클래스 — Server(전송 계층)의 콜백(onConnect/
+// onLine/onDisconnect)을 구현해 연결한다. Server는 IRC를 모르고, IrcApplication은 소켓 I/O를 모른다
+// (전부 Server/Connection에 위임) — 관심사 분리의 경계선.
 struct AppMetrics {
     std::size_t commandsHandled;
     std::size_t messagesRelayed;
